@@ -1,0 +1,21 @@
+[package]
+name = "test1"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow = "1.0.99"
+bytemuck = "1.23.2"
+console_error_panic_hook = "0.1.7"
+console_log = "1.0.0"
+env_logger = "0.11.8"
+log = "0.4.27"
+pollster = "0.4.0"
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
+web-sys = "0.3.77"
+wgpu = "26.0.1"
+winit = "0.30.12"
