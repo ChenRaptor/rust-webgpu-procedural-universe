@@ -1,8 +1,9 @@
 use std::{iter, sync::Arc};
 
 #[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
+use env_logger::fmt::Timestamp;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::js_sys;
 
@@ -151,9 +152,9 @@ impl Camera {
             self.znear,
             self.zfar,
         );
-        let view_proj = proj * view;
-        log::info!("{:?}", view_proj);
-        view_proj
+        // let view_proj = proj * view;
+        // log::info!("{:?}", view_proj);
+        proj * view
     }
 }
 
@@ -173,6 +174,25 @@ impl CameraUniform {
     fn update_view_proj(&mut self, camera: &Camera) {
         let mat = OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix();
         self.view_proj = mat.to_cols_array_2d();
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct ModelUniform {
+    model: [[f32; 4]; 4],
+}
+
+impl ModelUniform {
+    fn new() -> Self {
+        Self {
+            model: glam::Mat4::IDENTITY.to_cols_array_2d(),
+        }
+    }
+
+    fn update_rotation(&mut self, angle: f32) {
+        let rotation = glam::Mat4::from_rotation_y(angle); // rotation sur Y
+        self.model = rotation.to_cols_array_2d();
     }
 }
 
@@ -280,6 +300,10 @@ pub struct State {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    model_uniform: ModelUniform,
+    model_buffer: wgpu::Buffer,
+    model_bind_group: wgpu::BindGroup,
+    rotation_angle: f32,
     window: Arc<Window>,
 }
 
@@ -433,6 +457,38 @@ impl State {
             label: Some("camera_bind_group"),
         });
 
+        let mut model_uniform = ModelUniform::new();
+        model_uniform.update_rotation(0.0); // initialement pas de rotation
+
+        let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Model Buffer"),
+            contents: bytemuck::cast_slice(&[model_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let model_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("model_bind_group_layout"),
+        });
+
+        let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &model_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: model_buffer.as_entire_binding(),
+            }],
+            label: Some("model_bind_group"),
+        });
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -441,7 +497,10 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[/*&texture_bind_group_layout, */&camera_bind_group_layout],
+                bind_group_layouts: &[/*&texture_bind_group_layout, */
+                    &camera_bind_group_layout,
+                    &model_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -493,29 +552,6 @@ impl State {
             cache: None,
         });
 
-        // Génération de l'icosphère
-        // let mut icosphere = IcoSphere::new();
-        // icosphere.generate(2); // 2 subdivisions pour une belle sphère
-
-        // // Conversion des vertices de l'icosphère en format Vertex
-        // let vertices: Vec<Vertex> = icosphere
-        //     .vertices
-        //     .iter()
-        //     .map(|&pos| Vertex::from_position(pos))
-        //     .collect();
-
-        // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Vertex Buffer"),
-        //     contents: bytemuck::cast_slice(&vertices),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-        // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Index Buffer"),
-        //     contents: bytemuck::cast_slice(&icosphere.indices),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
-        // let num_indices = icosphere.indices.len() as u32;
-
         let mut planet = Planet::new();
         let subdivision: usize = 9;
         planet.generate(subdivision as u8);
@@ -555,6 +591,10 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_uniform,
+            model_uniform,
+            model_buffer,
+            model_bind_group,
+            rotation_angle: 0.0,
             window,
         })
     }
@@ -583,6 +623,13 @@ impl State {
     }
 
     fn update(&mut self) {
+        self.rotation_angle += 0.01; // vitesse de rotation
+        self.model_uniform.update_rotation(self.rotation_angle);
+        self.queue.write_buffer(
+            &self.model_buffer,
+            0,
+            bytemuck::cast_slice(&[self.model_uniform]),
+        );
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
         self.queue.write_buffer(
@@ -636,6 +683,7 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.model_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
@@ -647,6 +695,16 @@ impl State {
         Ok(())
     }
 }
+
+
+
+
+
+
+
+
+
+
 
 pub struct App {
     #[cfg(target_arch = "wasm32")]
@@ -746,6 +804,9 @@ impl ApplicationHandler<State> for App {
             WindowEvent::RedrawRequested => {
                 // Vérifier la limitation FPS avant tout traitement
                 if !self.should_render() {
+                    if let Some(state) = &self.state {
+                        state.window.request_redraw();
+                    }
                     return;
                 }
 
@@ -768,6 +829,14 @@ impl ApplicationHandler<State> for App {
                         log::error!("Unable to render {}", e);
                     }
                 }
+
+                // let val: Instant = now() + 16.0;
+                // event_loop.set_control_flow(
+                //     winit::event_loop::ControlFlow::WaitUntil(
+                //         now() + 16.0,
+                //     ),
+                // );
+
             }
             _ => {
                 let state = match &mut self.state {
