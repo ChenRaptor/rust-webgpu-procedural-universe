@@ -1,15 +1,52 @@
 use std::{iter, sync::Arc};
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::js_sys;
+
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::Window
 };
 
-mod geometry {
-    pub mod icosphere;
+// Abstraction pour le timing cross-platform
+#[cfg(target_arch = "wasm32")]
+type TimeStamp = f64;
+
+#[cfg(not(target_arch = "wasm32"))]
+type TimeStamp = Instant;
+
+#[cfg(target_arch = "wasm32")]
+fn now() -> TimeStamp {
+    js_sys::Date::now()
 }
 
-use geometry::icosphere::IcoSphere;
+#[cfg(not(target_arch = "wasm32"))]
+fn now() -> TimeStamp {
+    Instant::now()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn time_diff_ms(start: TimeStamp, end: TimeStamp) -> f64 {
+    end - start
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn time_diff_ms(start: TimeStamp, end: TimeStamp) -> f64 {
+    end.duration_since(start).as_millis() as f64
+}
+
+mod geometry {
+    pub mod icosphere;
+    pub mod kdtree3d;
+    pub mod planet;
+    pub mod fbm;
+}
+
+// use geometry::icosphere::IcoSphere;
+use geometry::planet::Planet;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -50,16 +87,42 @@ impl Vertex {
         }
     }
 
-    fn from_position(position: glam::Vec3) -> Self {
+    // fn from_position(position: glam::Vec3) -> Self {
+    //     Self {
+    //         position: position.to_array(),
+    //         color: [1.0, 0.0, 0.0], // Couleur rouge par défaut
+    //         normal: position.normalize().to_array(), // Normale calculée à partir de la position pour une sphère
+    //     }
+    // }
+
+    // Fonction pour créer un vertex depuis le buffer de la planète
+    // Le buffer de la planète contient: [pos.x, pos.y, pos.z, color.r, color.g, color.b, normal.x, normal.y, normal.z]
+    fn from_planet_buffer(buffer: &[f32], vertex_index: usize) -> Self {
+        let start = vertex_index * 9;
         Self {
-            position: position.to_array(),
-            color: [1.0, 0.0, 0.0], // Couleur rouge par défaut
-            normal: position.normalize().to_array(), // Normale calculée à partir de la position pour une sphère
+            position: [buffer[start], buffer[start + 1], buffer[start + 2]],
+            color: [buffer[start + 3], buffer[start + 4], buffer[start + 5]],
+            normal: [buffer[start + 6], buffer[start + 7], buffer[start + 8]],
         }
     }
-}
 
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4, /* padding */ 0];
+    // fn from_position(position: glam::Vec3) -> Self {
+    //     Self {
+    //         position: position.to_array(),
+    //         color: [1.0, 0.0, 0.0], // Couleur rouge par défaut
+    //         normal: position.normalize().to_array(), // Normale calculée à partir de la position pour une sphère
+    //     }
+    // }
+
+    // fn from_position(position: [f32; 3]) -> Self {
+    //     Self {
+    //         position: position.to_array(),
+    //         color: [1.0, 0.0, 0.0], // Couleur rouge par défaut
+    //         // normal: position.normalize().to_array(), // Normale calculée à partir de la position pour une sphère
+    //         normal: [1.0, 0.0, 0.0]
+    //     }
+    // }
+}
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: glam::Mat4 = glam::Mat4::from_cols(
@@ -431,14 +494,34 @@ impl State {
         });
 
         // Génération de l'icosphère
-        let mut icosphere = IcoSphere::new();
-        icosphere.generate(2); // 2 subdivisions pour une belle sphère
+        // let mut icosphere = IcoSphere::new();
+        // icosphere.generate(2); // 2 subdivisions pour une belle sphère
 
-        // Conversion des vertices de l'icosphère en format Vertex
-        let vertices: Vec<Vertex> = icosphere
-            .vertices
-            .iter()
-            .map(|&pos| Vertex::from_position(pos))
+        // // Conversion des vertices de l'icosphère en format Vertex
+        // let vertices: Vec<Vertex> = icosphere
+        //     .vertices
+        //     .iter()
+        //     .map(|&pos| Vertex::from_position(pos))
+        //     .collect();
+
+        // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Vertex Buffer"),
+        //     contents: bytemuck::cast_slice(&vertices),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
+        // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("Index Buffer"),
+        //     contents: bytemuck::cast_slice(&icosphere.indices),
+        //     usage: wgpu::BufferUsages::INDEX,
+        // });
+        // let num_indices = icosphere.indices.len() as u32;
+
+        let mut planet = Planet::new();
+        let subdivision: usize = 9;
+        planet.generate(subdivision as u8);
+
+        let vertices: Vec<Vertex> = (0..planet.get_vertex_count(subdivision))
+            .map(|i| Vertex::from_planet_buffer(planet.get_vertices(subdivision), i))
             .collect();
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -446,12 +529,14 @@ impl State {
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
+
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&icosphere.indices),
+            contents: bytemuck::cast_slice(planet.get_indices(subdivision)),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let num_indices = icosphere.indices.len() as u32;
+
+        let num_indices = planet.get_index_count(subdivision) as u32;
 
         Ok(Self {
             surface,
@@ -567,6 +652,8 @@ pub struct App {
     #[cfg(target_arch = "wasm32")]
     proxy: Option<winit::event_loop::EventLoopProxy<State>>,
     state: Option<State>,
+    last_render_time: TimeStamp,
+    target_frame_time_ms: f64,
 }
 
 impl App {
@@ -577,7 +664,18 @@ impl App {
             state: None,
             #[cfg(target_arch = "wasm32")]
             proxy,
+            last_render_time: now(),
+            target_frame_time_ms: 1000.0 / 60.0, // 60 FPS
         }
+    }
+
+    fn should_render(&self) -> bool {
+        let current_time = now();
+        time_diff_ms(self.last_render_time, current_time) >= self.target_frame_time_ms
+    }
+
+    fn update_render_time(&mut self) {
+        self.last_render_time = now();
     }
 }
 
@@ -644,18 +742,23 @@ impl ApplicationHandler<State> for App {
         _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        let state = match &mut self.state {
-            Some(canvas) => canvas,
-            None => return,
-        };
-
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
+                // Vérifier la limitation FPS avant tout traitement
+                if !self.should_render() {
+                    return;
+                }
+
+                let state = match &mut self.state {
+                    Some(canvas) => canvas,
+                    None => return,
+                };
+
                 state.update();
                 match state.render() {
-                    Ok(_) => {}
+                    Ok(_) => {
+                        self.update_render_time();
+                    }
                     // Reconfigure the surface if it's lost or outdated
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                         let size = state.window.inner_size();
@@ -666,21 +769,37 @@ impl ApplicationHandler<State> for App {
                     }
                 }
             }
-            WindowEvent::MouseInput { state, button, .. } => match (button, state.is_pressed()) {
-                (MouseButton::Left, true) => {}
-                (MouseButton::Left, false) => {}
-                _ => {}
-            },
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        physical_key: PhysicalKey::Code(code),
-                        state: key_state,
-                        ..
+            _ => {
+                let state = match &mut self.state {
+                    Some(canvas) => canvas,
+                    None => return,
+                };
+
+                match event {
+                    WindowEvent::CloseRequested => event_loop.exit(),
+                    WindowEvent::Resized(size) => state.resize(size.width, size.height),
+                    WindowEvent::MouseInput { state, button, .. } => match (button, state.is_pressed()) {
+                        (MouseButton::Left, true) => {}
+                        (MouseButton::Left, false) => {}
+                        _ => {}
                     },
-                ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
-            _ => {}
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                physical_key: PhysicalKey::Code(code),
+                                state: key_state,
+                                ..
+                            },
+                        ..
+                    } => state.handle_key(event_loop, code, key_state.is_pressed()),
+                    _ => {}
+                }
+            }
+        }
+
+        // Demander un nouveau redraw pour maintenir la boucle de rendu
+        if let Some(state) = &self.state {
+            state.window.request_redraw();
         }
     }
 }
