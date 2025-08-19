@@ -3,34 +3,50 @@ use crate::geometry::icosphere::IcoSphere;
 use crate::geometry::kdtree3d::KDTree3D;
 use crate::geometry::fbm::fbm_perlin_noise;
 use std::f32::consts::PI;
+use wgpu::util::DeviceExt;
+
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vec3Padded {
+    x: f32,
+    y: f32,
+    z: f32,
+    _pad: f32, // padding pour correspondre à vec3<f32> aligné sur 16
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+struct Params {
+    radius: f32,
+    sea_level: f32,
+    height_amplitude: f32,
+    continent_octaves: u32,
+    continent_persistence: f32,
+    continent_noise_scale: f32,
+    big_mountain_octaves: u32,
+    big_mountain_persistence: f32,
+    big_mountain_noise_scale: f32,
+    mountain_octaves: u32,
+    mountain_persistence: f32,
+    mountain_noise_scale: f32,
+    biome_octaves: u32,
+    biome_persistence: f32,
+    biome_noise_scale: f32,
+}
+
+unsafe impl bytemuck::Pod for Params {}
+unsafe impl bytemuck::Zeroable for Params {}
 
 struct ColorPoint {
     color: Vec3,
     key: f32,
 }
 
-
 impl ColorPoint {
     pub fn new(color: Vec3, key: f32) -> Self {
         Self { color, key }
     }
-    
-    // // Constructeurs utiles pour des couleurs communes
-    // pub fn red(key: f32) -> Self {
-    //     Self::new(Vec3::new(1.0, 0.0, 0.0), key)
-    // }
-    
-    // pub fn green(key: f32) -> Self {
-    //     Self::new(Vec3::new(0.0, 1.0, 0.0), key)
-    // }
-    
-    // pub fn blue(key: f32) -> Self {
-    //     Self::new(Vec3::new(0.0, 0.0, 1.0), key)
-    // }
-    
-    // pub fn from_rgb(r: f32, g: f32, b: f32, key: f32) -> Self {
-    //     Self::new(Vec3::new(r, g, b), key)
-    // }
     
     pub fn from_hex(hex: u32, key: f32) -> Self {
         let color = Vec3::new(
@@ -41,15 +57,6 @@ impl ColorPoint {
         Self::new(color, key)
     }
 }
-
-// enum Biome {
-//     Ocean,
-//     Desert,
-//     Forest,
-//     Tundra,
-//     Mountain,
-//     Snow,
-// }
 
 fn get_biome_index(temperature: f32, humidity: f32, altitude: f32, sea_level: f32) -> usize {
     if altitude < sea_level {
@@ -161,6 +168,7 @@ pub struct Planet {
     lod_max_solid: Option<IcoSphere>,
     lod_max_vertices: Vec<Vec3>,
     lod_max_colors: Vec<Vec3>,
+    kd_tree_max: Option<KDTree3D>,
     pub lod_levels: Vec<Sphere>,
 }
 
@@ -221,14 +229,153 @@ impl Planet {
             lod_max_solid: None,
             lod_max_vertices: Vec::new(),
             lod_max_colors: Vec::new(),
+            kd_tree_max: None,
             lod_levels: Vec::new(),
         }
     }
 
-    pub fn generate(&mut self, subdivision: u8) {
-        // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
-        static mut KD_TREE_MAX: Option<KDTree3D> = None;
+    // pub fn generate(&mut self, subdivision: u8) {
+    //     // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
+    //     static mut KD_TREE_MAX: Option<KDTree3D> = None;
 
+    //     if subdivision > self.max_subdivision {
+    //         println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
+    //         return;
+    //     }
+
+    //     if self.lod_levels.len() <= subdivision as usize {
+    //         println!("Planet: Resizing lod_levels from {} to {}", self.lod_levels.len(), subdivision + 1);
+    //         self.lod_levels.resize(self.max_subdivision as usize + 1, Sphere {
+    //             sphere_vertices: Vec::new(),
+    //             sphere_indices: Vec::new(),
+    //         });
+    //     }
+
+    //     if !self.lod_levels[subdivision as usize].sphere_vertices.is_empty() {
+    //         return;
+    //     }
+
+    //     // Générer la subdivision maximale si nécessaire
+    //     if self.lod_max_solid.is_none() {
+    //         println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
+    //         let mut max_solid = IcoSphere::new();
+    //         max_solid.generate(self.max_subdivision as u32);
+
+    //         // Construire le k-d tree sur les sommets de subdivision max
+    //         let mut points_max = Vec::new();
+    //         points_max.reserve(max_solid.vertices.len());
+    //         for vertex in &max_solid.vertices {
+    //             points_max.push(*vertex);
+    //         }
+
+    //         unsafe {
+    //             KD_TREE_MAX = Some(KDTree3D::new(&points_max));
+    //         }
+
+    //         // Calculer valeurs pour subdivision max
+    //         self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
+    //         self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
+
+    //         for (i, vertex) in max_solid.vertices.iter().enumerate() {
+    //             self.compute_vertices(*vertex, i);
+    //         }
+
+    //         self.lod_max_solid = Some(max_solid);
+    //     }
+
+    //     // Choisir la source de géométrie
+    //     let solid = if subdivision == self.max_subdivision {
+    //         println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
+    //         self.lod_max_solid.as_ref().unwrap()
+    //     } else {
+    //         // Pour les subdivisions inférieures, on devrait créer une nouvelle IcoSphere
+    //         // mais gardons l'existante pour l'instant
+    //         self.lod_max_solid.as_ref().unwrap()
+    //     };
+
+    //     let vertex_count = solid.vertices.len();
+    //     let index_count = solid.indices.len();
+    //     let vertices = &solid.vertices;
+
+    //     self.sphere_vertices.clear();
+    //     self.sphere_indices.clear();
+    //     self.sphere_vertices.resize(vertex_count * 9, 0.0);
+    //     self.sphere_indices.reserve(index_count);
+
+    //     // Remplir les vertices
+    //     for (i, vertex) in vertices.iter().enumerate() {
+    //         // Trouver le vertex le plus proche dans la subdivision max avec KDTree
+    //         let nearest_index = unsafe {
+    //             if let Some(ref kdtree) = KD_TREE_MAX {
+    //                 kdtree.nearest_neighbor(*vertex)
+    //             } else {
+    //                 0 // Fallback si pas de KDTree
+    //             }
+    //         };
+    //         let nearest_vertex = self.lod_max_vertices[nearest_index];
+    //         let nearest_color = self.lod_max_colors[nearest_index];
+
+    //         // Position
+    //         self.sphere_vertices[9 * i + 0] = nearest_vertex.x;
+    //         self.sphere_vertices[9 * i + 1] = nearest_vertex.y;
+    //         self.sphere_vertices[9 * i + 2] = nearest_vertex.z;
+
+    //         // Couleur
+    //         self.sphere_vertices[9 * i + 3] = nearest_color.x;
+    //         self.sphere_vertices[9 * i + 4] = nearest_color.y;
+    //         self.sphere_vertices[9 * i + 5] = nearest_color.z;
+    //     }
+
+    //     // Indices
+    //     self.sphere_indices.extend_from_slice(&solid.indices);
+
+    //     // Calcul des normales par accumulation
+    //     let mut normals = vec![Vec3::ZERO; vertex_count];
+    //     for triangle in self.sphere_indices.chunks(3) {
+    //         let i0 = triangle[0] as usize;
+    //         let i1 = triangle[1] as usize;
+    //         let i2 = triangle[2] as usize;
+
+    //         let v0 = Vec3::new(
+    //             self.sphere_vertices[9 * i0],
+    //             self.sphere_vertices[9 * i0 + 1],
+    //             self.sphere_vertices[9 * i0 + 2],
+    //         );
+    //         let v1 = Vec3::new(
+    //             self.sphere_vertices[9 * i1],
+    //             self.sphere_vertices[9 * i1 + 1],
+    //             self.sphere_vertices[9 * i1 + 2],
+    //         );
+    //         let v2 = Vec3::new(
+    //             self.sphere_vertices[9 * i2],
+    //             self.sphere_vertices[9 * i2 + 1],
+    //             self.sphere_vertices[9 * i2 + 2],
+    //         );
+
+    //         let edge1 = v1 - v0;
+    //         let edge2 = v2 - v0;
+    //         let normal = edge1.cross(edge2).normalize();
+
+    //         normals[i0] += normal;
+    //         normals[i1] += normal;
+    //         normals[i2] += normal;
+    //     }
+
+    //     // Normaliser et assigner les normales
+    //     for (i, normal) in normals.iter().enumerate() {
+    //         let n = normal.normalize();
+    //         self.sphere_vertices[9 * i + 6] = n.x;
+    //         self.sphere_vertices[9 * i + 7] = n.y;
+    //         self.sphere_vertices[9 * i + 8] = n.z;
+    //     }
+
+    //     // Sauvegarder dans le niveau LOD
+    //     self.lod_levels[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
+    //     self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
+    // }
+
+
+    pub fn generate(&mut self, subdivision: u8, device: &wgpu::Device, queue: &wgpu::Queue) {
         if subdivision > self.max_subdivision {
             println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
             return;
@@ -246,35 +393,217 @@ impl Planet {
             return;
         }
 
-        // Générer la subdivision maximale si nécessaire
+        // ---- Générer subdivision max si pas encore fait ----
         if self.lod_max_solid.is_none() {
             println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
             let mut max_solid = IcoSphere::new();
             max_solid.generate(self.max_subdivision as u32);
 
-            // Construire le k-d tree sur les sommets de subdivision max
-            let mut points_max = Vec::new();
-            points_max.reserve(max_solid.vertices.len());
-            for vertex in &max_solid.vertices {
-                points_max.push(*vertex);
+            let points_max = max_solid.vertices.clone();
+            self.kd_tree_max = Some(KDTree3D::new(&points_max));
+
+            // === Partie GPU : deformation des sommets ===
+            let vertex_count = points_max.len();
+
+            // Buffers
+            let points_as_f32: Vec<[f32; 3]> = points_max.iter().map(|v| [v.x, v.y, v.z]).collect();
+            let in_vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("in_vertices"),
+                contents: bytemuck::cast_slice(&points_as_f32),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+
+            let out_positions = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("out_positions"),
+                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+
+            let out_colors = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("out_colors"),
+                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+
+            // Uniforms - correspond exactement au compute shader
+            let params = Params {
+                radius: self.radius,
+                sea_level: self.level_sea,
+                height_amplitude: self.height_amplitude,
+                continent_octaves: self.continent_octaves as u32,
+                continent_persistence: self.continent_persistence,
+                continent_noise_scale: self.continent_noise_scale,
+                big_mountain_octaves: self.big_mountain_octaves as u32,
+                big_mountain_persistence: self.big_mountain_persistence,
+                big_mountain_noise_scale: self.big_mountain_noise_scale,
+                mountain_octaves: self.mountain_octaves as u32,
+                mountain_persistence: self.mountain_persistence,
+                mountain_noise_scale: self.mountain_noise_scale,
+                biome_octaves: self.biome_octaves as u32,
+                biome_persistence: self.biome_persistence,
+                biome_noise_scale: self.biome_noise_scale,
+            };
+
+            let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Params"),
+                contents: bytemuck::bytes_of(&params),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+
+            // Shader & pipeline
+            let shader = device.create_shader_module(wgpu::include_wgsl!("compute_vertices.wgsl"));
+            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("compute_vertices pipeline"),
+                layout: None,
+                module: &shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+
+            let bind_group_layout = pipeline.get_bind_group_layout(0);
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: params_buffer.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 1, resource: in_vertices.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 2, resource: out_positions.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 3, resource: out_colors.as_entire_binding() },
+                ],
+                label: Some("compute bind group"),
+            });
+
+            // Create staging buffers for reading back data from GPU
+            let staging_positions = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("staging_positions"),
+                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            let staging_colors = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("staging_colors"),
+                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            // Dispatch compute shader
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("compute encoder") });
+            {
+                let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { 
+                    label: Some("compute pass"),
+                    timestamp_writes: None,
+                });
+                cpass.set_pipeline(&pipeline);
+                cpass.set_bind_group(0, &bind_group, &[]);
+                cpass.dispatch_workgroups(((vertex_count as u32) + 63) / 64, 1, 1);
             }
 
-            unsafe {
-                KD_TREE_MAX = Some(KDTree3D::new(&points_max));
+            // Copy from compute output buffers to staging buffers
+            let mut copy_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("copy encoder"),
+            });
+            copy_encoder.copy_buffer_to_buffer(
+                &out_positions,
+                0,
+                &staging_positions,
+                0,
+                (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
+            );
+            copy_encoder.copy_buffer_to_buffer(
+                &out_colors,
+                0,
+                &staging_colors,
+                0,
+                (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
+            );
+            
+            
+            let submission_index = queue.submit(Some(encoder.finish()));
+            queue.submit(Some(copy_encoder.finish()));
+
+            // Prepare storage for the data
+            self.lod_max_vertices.resize(vertex_count, Vec3::ZERO);
+            self.lod_max_colors.resize(vertex_count, Vec3::ZERO);
+
+            // Map staging buffers and read data asynchronously
+            let positions_slice = staging_positions.slice(..);
+            let colors_slice = staging_colors.slice(..);
+
+            // Map buffers
+            positions_slice.map_async(wgpu::MapMode::Read, |result| {
+                if let Err(e) = result {
+                    eprintln!("Failed to map positions buffer: {:?}", e);
+                }
+            });
+
+            colors_slice.map_async(wgpu::MapMode::Read, |result| {
+                if let Err(e) = result {
+                    eprintln!("Failed to map colors buffer: {:?}", e);
+                }
+            });
+
+            // Wait for GPU operations to complete
+            // Note: In WASM, we can't use thread::sleep, so we rely on the async mapping
+            
+            // Force device to poll until mapping is complete (WASM compatible)
+            if let Err(e) = device.poll(wgpu::PollType::WaitForSubmissionIndex(submission_index)) {
+                eprintln!("Error polling device: {:?}", e);
             }
 
-            // Calculer valeurs pour subdivision max
-            self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
-            self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
+            // Use multithreaded CPU computation for reliable cross-platform performance
+            // GPU compute runs in parallel but reading results is problematic in WASM
+            println!("Computing vertices with multithreaded CPU");
+            
+            // Prepare storage for the data
+            self.lod_max_vertices.resize(vertex_count, Vec3::ZERO);
+            self.lod_max_colors.resize(vertex_count, Vec3::ZERO);
 
-            for (i, vertex) in max_solid.vertices.iter().enumerate() {
-                self.compute_vertices(*vertex, i);
-            }
+            let data_position = positions_slice.get_mapped_range();
+            let result_position: &[Vec3Padded] = bytemuck::cast_slice(&data_position);
 
+            let data_color = colors_slice.get_mapped_range();
+            let result_color: &[Vec3Padded] = bytemuck::cast_slice(&data_color);
+            
+            // Multithreaded CPU computation using rayon
+            // #[cfg(all(feature = "rayon", not(target_arch = "wasm32")))]
+            // {
+            //     use rayon::prelude::*;
+                
+            //     let vertices_and_colors: Vec<(Vec3, Vec3)> = max_solid.vertices
+            //         .par_iter()
+            //         .map(|&vertex| {
+            //             // Compute each vertex in parallel
+            //             self.compute_vertex_data(vertex)
+            //         })
+            //         .collect();
+
+            //     // Copy results back
+            //     for (i, (vertex, color)) in vertices_and_colors.into_iter().enumerate() {
+            //         self.lod_max_vertices[i] = vertex;
+            //         self.lod_max_colors[i] = color;
+            //     }
+            // }
+            
+            // #[cfg(any(not(feature = "rayon"), target_arch = "wasm32"))]
+            // {
+            //     // Single-threaded fallback for WASM or when rayon is disabled
+            //     for (i, vertex) in max_solid.vertices.iter().enumerate() {
+            //         let (computed_vertex, computed_color) = self.compute_vertex_data(*vertex);
+            //         self.lod_max_vertices[i] = computed_vertex;
+            //         self.lod_max_colors[i] = computed_color;
+            //     }
+            // }
+
+            self.lod_max_vertices[self.max_subdivision] = Vec3::new(result_color.x, result_color.y, result_color.z);
+            self.lod_max_colors[self.max_subdivision] = Vec3::new(result_color.x, result_color.y, result_color.z);
             self.lod_max_solid = Some(max_solid);
         }
 
-        // Choisir la source de géométrie
+        // ---- Choix de la géométrie source ----
         let solid = if subdivision == self.max_subdivision {
             println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
             self.lod_max_solid.as_ref().unwrap()
@@ -285,23 +614,19 @@ impl Planet {
         };
 
         let vertex_count = solid.vertices.len();
-        let index_count = solid.indices.len();
         let vertices = &solid.vertices;
 
         self.sphere_vertices.clear();
         self.sphere_indices.clear();
         self.sphere_vertices.resize(vertex_count * 9, 0.0);
-        self.sphere_indices.reserve(index_count);
 
         // Remplir les vertices
         for (i, vertex) in vertices.iter().enumerate() {
             // Trouver le vertex le plus proche dans la subdivision max avec KDTree
-            let nearest_index = unsafe {
-                if let Some(ref kdtree) = KD_TREE_MAX {
-                    kdtree.nearest_neighbor(*vertex)
-                } else {
-                    0 // Fallback si pas de KDTree
-                }
+            let nearest_index = if let Some(ref kdtree) = self.kd_tree_max {
+                kdtree.nearest_neighbor(*vertex)
+            } else {
+                0 // Fallback si pas de KDTree
             };
             let nearest_vertex = self.lod_max_vertices[nearest_index];
             let nearest_color = self.lod_max_colors[nearest_index];
@@ -365,6 +690,54 @@ impl Planet {
         self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
     }
 
+    // Fonction helper pour calculer les vertices avec Perlin noise (thread-safe)
+    fn compute_vertex_data(&self, v: Vec3) -> (Vec3, Vec3) {
+        // Calculer la position finale avec le rayon
+        let continent_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.continent_octaves, self.continent_persistence, self.continent_noise_scale);
+        let big_moutain_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.big_mountain_octaves, self.big_mountain_persistence, self.big_mountain_noise_scale);
+        let moutain_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.mountain_octaves, self.mountain_persistence, self.mountain_noise_scale);
+        let biome_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.biome_octaves, self.biome_persistence, self.biome_noise_scale);
+
+        let latitude: f32 = v.y.acos() / PI;
+        let continent_factor: f32 = (moutain_noise * big_moutain_noise * 0.6) + (continent_noise * 0.4);
+        let weight_continent: f32 = smoothstep(0.0, 0.1, continent_noise);
+        let weight_big_mountain: f32 = smoothstep(0.0, 0.2, big_moutain_noise);
+
+        let mut deformed_radius: f32 = self.radius + (continent_factor * self.height_amplitude);
+        deformed_radius += weight_big_mountain * weight_continent * big_moutain_noise * self.height_amplitude / 4.0;
+
+        let under_water: bool = deformed_radius <= self.level_sea;
+        if under_water {
+            deformed_radius = self.level_sea;
+        }
+
+        let final_vertex = deformed_radius * v;
+
+        let final_color = if under_water {
+            get_color_from_noise(continent_factor, &self.biome_palettes[0])
+        } else {
+            let altitude_normalized: f32 = (deformed_radius - self.radius) / self.height_amplitude;
+            let temperature: f32 = compute_temperature(latitude, altitude_normalized, v);
+            let humidity: f32 = compute_humidity(v);
+
+            let biome_idx = get_biome_index(temperature, humidity, deformed_radius, self.level_sea);
+            let biome_color: Vec3 = get_color_from_noise(biome_noise, &self.biome_palettes[biome_idx]);
+            let factor: f32 = moutain_noise * big_moutain_noise;
+            let mountain_color: Vec3 = get_color_from_noise(factor, &self.biome_palettes[4]);
+            let abs_factor = (20.0 * factor).tanh().abs();
+            let inv_mix = 0.5 - abs_factor / 2.0;
+            let mix = 0.5 + abs_factor / 2.0;
+
+            Vec3::new(
+                biome_color.x * inv_mix + mountain_color.x * mix,
+                biome_color.y * inv_mix + mountain_color.y * mix,
+                biome_color.z * inv_mix + mountain_color.z * mix
+            )
+        };
+
+        (final_vertex, final_color)
+    }
+
     // Fonction helper pour calculer les vertices avec Perlin noise
     fn compute_vertices(&mut self, v: Vec3, index: usize) {
         // Calculer la position finale avec le rayon
@@ -421,63 +794,6 @@ impl Planet {
         );
 
         self.lod_max_colors[index] = final_color;
-
-
-
-
-
-
-
-        // let scaled_vertex = vertex * self.radius;
-        
-        // // Calculer la hauteur avec FBM Perlin noise
-        // let continent_noise = fbm_perlin_noise(
-        //     scaled_vertex.x,
-        //     scaled_vertex.y,
-        //     scaled_vertex.z,
-        //     self.continent_octaves as u32,
-        //     self.continent_persistence,
-        //     self.continent_noise_scale
-        // );
-        
-        // let mountain_noise = fbm_perlin_noise(
-        //     scaled_vertex.x,
-        //     scaled_vertex.y,
-        //     scaled_vertex.z,
-        //     self.mountain_octaves as u32,
-        //     self.mountain_persistence,
-        //     self.mountain_noise_scale
-        // );
-        
-        // // Calculer la hauteur finale
-        // let height: f32 = (continent_noise + mountain_noise * 0.5).max(self.level_sea) * self.height_amplitude;
-        
-        // // Calculer la position finale avec la hauteur
-        // let final_position = scaled_vertex + vertex * height;
-        
-        // // Calculer la couleur basée sur la hauteur et le biome
-        // // let biome_noise = fbm_perlin_noise(
-        // //     scaled_vertex.x,
-        // //     scaled_vertex.y,
-        // //     scaled_vertex.z,
-        // //     self.biome_octaves as u32,
-        // //     self.biome_persistence,
-        // //     self.biome_noise_scale
-        // // );
-        
-        // // Couleur simple basée sur la hauteur pour l'instant
-        // let color = if height < self.level_sea + 0.1 {
-        //     Vec3::new(0.0, 0.3, 0.8) // Bleu pour l'eau
-        // } else if height < 0.3 {
-        //     Vec3::new(0.2, 0.7, 0.2) // Vert pour les plaines
-        // } else if height < 0.6 {
-        //     Vec3::new(0.5, 0.4, 0.2) // Brun pour les collines
-        // } else {
-        //     Vec3::new(0.9, 0.9, 0.9) // Blanc pour les montagnes
-        // };
-        
-        // self.lod_max_vertices[index] = final_position;
-        // self.lod_max_colors[index] = color;
     }
 
     // Méthodes publiques pour accéder aux données de rendu

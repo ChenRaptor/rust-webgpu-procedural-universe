@@ -117,7 +117,7 @@ impl InstanceRaw {
 
 
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
+const NUM_INSTANCES_PER_ROW: u32 = 1;
 const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
 
 
@@ -421,9 +421,13 @@ impl State {
             cache: None,
         });
 
+
+
+
+
         let mut planet = Planet::new();
         let subdivision: usize = 9;
-        planet.generate(subdivision as u8);
+        planet.generate(subdivision as u8, &device, &queue);
 
         let vertices: Vec<Vertex> = (0..planet.get_vertex_count(subdivision))
             .map(|i| Vertex::from_planet_buffer(planet.get_vertices(subdivision), i))
@@ -442,6 +446,9 @@ impl State {
         });
 
         let num_indices = planet.get_index_count(subdivision) as u32;
+
+
+
 
         let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
             (0..NUM_INSTANCES_PER_ROW).map(move |x| {
