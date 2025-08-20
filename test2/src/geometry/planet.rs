@@ -234,148 +234,10 @@ impl Planet {
         }
     }
 
-    // pub fn generate(&mut self, subdivision: u8) {
-    //     // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
-    //     static mut KD_TREE_MAX: Option<KDTree3D> = None;
+    pub fn generate(&mut self, subdivision: u8) {
+        // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
+        static mut KD_TREE_MAX: Option<KDTree3D> = None;
 
-    //     if subdivision > self.max_subdivision {
-    //         println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
-    //         return;
-    //     }
-
-    //     if self.lod_levels.len() <= subdivision as usize {
-    //         println!("Planet: Resizing lod_levels from {} to {}", self.lod_levels.len(), subdivision + 1);
-    //         self.lod_levels.resize(self.max_subdivision as usize + 1, Sphere {
-    //             sphere_vertices: Vec::new(),
-    //             sphere_indices: Vec::new(),
-    //         });
-    //     }
-
-    //     if !self.lod_levels[subdivision as usize].sphere_vertices.is_empty() {
-    //         return;
-    //     }
-
-    //     // Générer la subdivision maximale si nécessaire
-    //     if self.lod_max_solid.is_none() {
-    //         println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
-    //         let mut max_solid = IcoSphere::new();
-    //         max_solid.generate(self.max_subdivision as u32);
-
-    //         // Construire le k-d tree sur les sommets de subdivision max
-    //         let mut points_max = Vec::new();
-    //         points_max.reserve(max_solid.vertices.len());
-    //         for vertex in &max_solid.vertices {
-    //             points_max.push(*vertex);
-    //         }
-
-    //         unsafe {
-    //             KD_TREE_MAX = Some(KDTree3D::new(&points_max));
-    //         }
-
-    //         // Calculer valeurs pour subdivision max
-    //         self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
-    //         self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
-
-    //         for (i, vertex) in max_solid.vertices.iter().enumerate() {
-    //             self.compute_vertices(*vertex, i);
-    //         }
-
-    //         self.lod_max_solid = Some(max_solid);
-    //     }
-
-    //     // Choisir la source de géométrie
-    //     let solid = if subdivision == self.max_subdivision {
-    //         println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
-    //         self.lod_max_solid.as_ref().unwrap()
-    //     } else {
-    //         // Pour les subdivisions inférieures, on devrait créer une nouvelle IcoSphere
-    //         // mais gardons l'existante pour l'instant
-    //         self.lod_max_solid.as_ref().unwrap()
-    //     };
-
-    //     let vertex_count = solid.vertices.len();
-    //     let index_count = solid.indices.len();
-    //     let vertices = &solid.vertices;
-
-    //     self.sphere_vertices.clear();
-    //     self.sphere_indices.clear();
-    //     self.sphere_vertices.resize(vertex_count * 9, 0.0);
-    //     self.sphere_indices.reserve(index_count);
-
-    //     // Remplir les vertices
-    //     for (i, vertex) in vertices.iter().enumerate() {
-    //         // Trouver le vertex le plus proche dans la subdivision max avec KDTree
-    //         let nearest_index = unsafe {
-    //             if let Some(ref kdtree) = KD_TREE_MAX {
-    //                 kdtree.nearest_neighbor(*vertex)
-    //             } else {
-    //                 0 // Fallback si pas de KDTree
-    //             }
-    //         };
-    //         let nearest_vertex = self.lod_max_vertices[nearest_index];
-    //         let nearest_color = self.lod_max_colors[nearest_index];
-
-    //         // Position
-    //         self.sphere_vertices[9 * i + 0] = nearest_vertex.x;
-    //         self.sphere_vertices[9 * i + 1] = nearest_vertex.y;
-    //         self.sphere_vertices[9 * i + 2] = nearest_vertex.z;
-
-    //         // Couleur
-    //         self.sphere_vertices[9 * i + 3] = nearest_color.x;
-    //         self.sphere_vertices[9 * i + 4] = nearest_color.y;
-    //         self.sphere_vertices[9 * i + 5] = nearest_color.z;
-    //     }
-
-    //     // Indices
-    //     self.sphere_indices.extend_from_slice(&solid.indices);
-
-    //     // Calcul des normales par accumulation
-    //     let mut normals = vec![Vec3::ZERO; vertex_count];
-    //     for triangle in self.sphere_indices.chunks(3) {
-    //         let i0 = triangle[0] as usize;
-    //         let i1 = triangle[1] as usize;
-    //         let i2 = triangle[2] as usize;
-
-    //         let v0 = Vec3::new(
-    //             self.sphere_vertices[9 * i0],
-    //             self.sphere_vertices[9 * i0 + 1],
-    //             self.sphere_vertices[9 * i0 + 2],
-    //         );
-    //         let v1 = Vec3::new(
-    //             self.sphere_vertices[9 * i1],
-    //             self.sphere_vertices[9 * i1 + 1],
-    //             self.sphere_vertices[9 * i1 + 2],
-    //         );
-    //         let v2 = Vec3::new(
-    //             self.sphere_vertices[9 * i2],
-    //             self.sphere_vertices[9 * i2 + 1],
-    //             self.sphere_vertices[9 * i2 + 2],
-    //         );
-
-    //         let edge1 = v1 - v0;
-    //         let edge2 = v2 - v0;
-    //         let normal = edge1.cross(edge2).normalize();
-
-    //         normals[i0] += normal;
-    //         normals[i1] += normal;
-    //         normals[i2] += normal;
-    //     }
-
-    //     // Normaliser et assigner les normales
-    //     for (i, normal) in normals.iter().enumerate() {
-    //         let n = normal.normalize();
-    //         self.sphere_vertices[9 * i + 6] = n.x;
-    //         self.sphere_vertices[9 * i + 7] = n.y;
-    //         self.sphere_vertices[9 * i + 8] = n.z;
-    //     }
-
-    //     // Sauvegarder dans le niveau LOD
-    //     self.lod_levels[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
-    //     self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
-    // }
-
-
-    pub fn generate(&mut self, subdivision: u8, device: &wgpu::Device, queue: &wgpu::Queue) {
         if subdivision > self.max_subdivision {
             println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
             return;
@@ -393,217 +255,37 @@ impl Planet {
             return;
         }
 
-        // ---- Générer subdivision max si pas encore fait ----
+        // Générer la subdivision maximale si nécessaire
         if self.lod_max_solid.is_none() {
             println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
             let mut max_solid = IcoSphere::new();
             max_solid.generate(self.max_subdivision as u32);
 
-            let points_max = max_solid.vertices.clone();
-            self.kd_tree_max = Some(KDTree3D::new(&points_max));
-
-            // === Partie GPU : deformation des sommets ===
-            let vertex_count = points_max.len();
-
-            // Buffers
-            let points_as_f32: Vec<[f32; 3]> = points_max.iter().map(|v| [v.x, v.y, v.z]).collect();
-            let in_vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("in_vertices"),
-                contents: bytemuck::cast_slice(&points_as_f32),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-
-            let out_positions = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("out_positions"),
-                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            });
-
-            let out_colors = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("out_colors"),
-                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            });
-
-            // Uniforms - correspond exactement au compute shader
-            let params = Params {
-                radius: self.radius,
-                sea_level: self.level_sea,
-                height_amplitude: self.height_amplitude,
-                continent_octaves: self.continent_octaves as u32,
-                continent_persistence: self.continent_persistence,
-                continent_noise_scale: self.continent_noise_scale,
-                big_mountain_octaves: self.big_mountain_octaves as u32,
-                big_mountain_persistence: self.big_mountain_persistence,
-                big_mountain_noise_scale: self.big_mountain_noise_scale,
-                mountain_octaves: self.mountain_octaves as u32,
-                mountain_persistence: self.mountain_persistence,
-                mountain_noise_scale: self.mountain_noise_scale,
-                biome_octaves: self.biome_octaves as u32,
-                biome_persistence: self.biome_persistence,
-                biome_noise_scale: self.biome_noise_scale,
-            };
-
-            let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Params"),
-                contents: bytemuck::bytes_of(&params),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-
-            // Shader & pipeline
-            let shader = device.create_shader_module(wgpu::include_wgsl!("compute_vertices.wgsl"));
-            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("compute_vertices pipeline"),
-                layout: None,
-                module: &shader,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
-
-            let bind_group_layout = pipeline.get_bind_group_layout(0);
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: params_buffer.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: in_vertices.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 2, resource: out_positions.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 3, resource: out_colors.as_entire_binding() },
-                ],
-                label: Some("compute bind group"),
-            });
-
-            // Create staging buffers for reading back data from GPU
-            let staging_positions = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("staging_positions"),
-                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            let staging_colors = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("staging_colors"),
-                size: (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            // Dispatch compute shader
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("compute encoder") });
-            {
-                let mut cpass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { 
-                    label: Some("compute pass"),
-                    timestamp_writes: None,
-                });
-                cpass.set_pipeline(&pipeline);
-                cpass.set_bind_group(0, &bind_group, &[]);
-                cpass.dispatch_workgroups(((vertex_count as u32) + 63) / 64, 1, 1);
+            // Construire le k-d tree sur les sommets de subdivision max
+            let mut points_max = Vec::new();
+            points_max.reserve(max_solid.vertices.len());
+            for vertex in &max_solid.vertices {
+                points_max.push(*vertex);
             }
 
-            // Copy from compute output buffers to staging buffers
-            let mut copy_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("copy encoder"),
-            });
-            copy_encoder.copy_buffer_to_buffer(
-                &out_positions,
-                0,
-                &staging_positions,
-                0,
-                (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
-            );
-            copy_encoder.copy_buffer_to_buffer(
-                &out_colors,
-                0,
-                &staging_colors,
-                0,
-                (vertex_count * std::mem::size_of::<[f32; 3]>()) as u64,
-            );
-            
-            
-            let submission_index = queue.submit(Some(encoder.finish()));
-            queue.submit(Some(copy_encoder.finish()));
-
-            // Prepare storage for the data
-            self.lod_max_vertices.resize(vertex_count, Vec3::ZERO);
-            self.lod_max_colors.resize(vertex_count, Vec3::ZERO);
-
-            // Map staging buffers and read data asynchronously
-            let positions_slice = staging_positions.slice(..);
-            let colors_slice = staging_colors.slice(..);
-
-            // Map buffers
-            positions_slice.map_async(wgpu::MapMode::Read, |result| {
-                if let Err(e) = result {
-                    eprintln!("Failed to map positions buffer: {:?}", e);
-                }
-            });
-
-            colors_slice.map_async(wgpu::MapMode::Read, |result| {
-                if let Err(e) = result {
-                    eprintln!("Failed to map colors buffer: {:?}", e);
-                }
-            });
-
-            // Wait for GPU operations to complete
-            // Note: In WASM, we can't use thread::sleep, so we rely on the async mapping
-            
-            // Force device to poll until mapping is complete (WASM compatible)
-            if let Err(e) = device.poll(wgpu::PollType::WaitForSubmissionIndex(submission_index)) {
-                eprintln!("Error polling device: {:?}", e);
+            unsafe {
+                KD_TREE_MAX = Some(KDTree3D::new(&points_max));
             }
 
-            // Use multithreaded CPU computation for reliable cross-platform performance
-            // GPU compute runs in parallel but reading results is problematic in WASM
-            println!("Computing vertices with multithreaded CPU");
-            
-            // Prepare storage for the data
-            self.lod_max_vertices.resize(vertex_count, Vec3::ZERO);
-            self.lod_max_colors.resize(vertex_count, Vec3::ZERO);
+            // Calculer valeurs pour subdivision max
+            self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
+            self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
 
-            let data_position = positions_slice.get_mapped_range();
-            let result_position: &[Vec3Padded] = bytemuck::cast_slice(&data_position);
+            for (i, vertex) in max_solid.vertices.iter().enumerate() {
+                let (v, c) = self.compute_vertex_data(*vertex);
+                self.lod_max_vertices[i] = v;
+                self.lod_max_colors[i] = c;
+            }
 
-            let data_color = colors_slice.get_mapped_range();
-            let result_color: &[Vec3Padded] = bytemuck::cast_slice(&data_color);
-            
-            // Multithreaded CPU computation using rayon
-            // #[cfg(all(feature = "rayon", not(target_arch = "wasm32")))]
-            // {
-            //     use rayon::prelude::*;
-                
-            //     let vertices_and_colors: Vec<(Vec3, Vec3)> = max_solid.vertices
-            //         .par_iter()
-            //         .map(|&vertex| {
-            //             // Compute each vertex in parallel
-            //             self.compute_vertex_data(vertex)
-            //         })
-            //         .collect();
-
-            //     // Copy results back
-            //     for (i, (vertex, color)) in vertices_and_colors.into_iter().enumerate() {
-            //         self.lod_max_vertices[i] = vertex;
-            //         self.lod_max_colors[i] = color;
-            //     }
-            // }
-            
-            // #[cfg(any(not(feature = "rayon"), target_arch = "wasm32"))]
-            // {
-            //     // Single-threaded fallback for WASM or when rayon is disabled
-            //     for (i, vertex) in max_solid.vertices.iter().enumerate() {
-            //         let (computed_vertex, computed_color) = self.compute_vertex_data(*vertex);
-            //         self.lod_max_vertices[i] = computed_vertex;
-            //         self.lod_max_colors[i] = computed_color;
-            //     }
-            // }
-
-            self.lod_max_vertices[self.max_subdivision] = Vec3::new(result_color.x, result_color.y, result_color.z);
-            self.lod_max_colors[self.max_subdivision] = Vec3::new(result_color.x, result_color.y, result_color.z);
             self.lod_max_solid = Some(max_solid);
         }
 
-        // ---- Choix de la géométrie source ----
+        // Choisir la source de géométrie
         let solid = if subdivision == self.max_subdivision {
             println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
             self.lod_max_solid.as_ref().unwrap()
@@ -614,19 +296,23 @@ impl Planet {
         };
 
         let vertex_count = solid.vertices.len();
+        let index_count = solid.indices.len();
         let vertices = &solid.vertices;
 
         self.sphere_vertices.clear();
         self.sphere_indices.clear();
         self.sphere_vertices.resize(vertex_count * 9, 0.0);
+        self.sphere_indices.reserve(index_count);
 
         // Remplir les vertices
         for (i, vertex) in vertices.iter().enumerate() {
             // Trouver le vertex le plus proche dans la subdivision max avec KDTree
-            let nearest_index = if let Some(ref kdtree) = self.kd_tree_max {
-                kdtree.nearest_neighbor(*vertex)
-            } else {
-                0 // Fallback si pas de KDTree
+            let nearest_index = unsafe {
+                if let Some(ref kdtree) = KD_TREE_MAX {
+                    kdtree.nearest_neighbor(*vertex)
+                } else {
+                    0 // Fallback si pas de KDTree
+                }
             };
             let nearest_vertex = self.lod_max_vertices[nearest_index];
             let nearest_color = self.lod_max_colors[nearest_index];

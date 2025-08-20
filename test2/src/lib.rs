@@ -47,10 +47,12 @@ mod geometry {
 }
 
 mod camera;
+mod stellar_system;
 
 // use geometry::icosphere::IcoSphere;
 use geometry::planet::Planet;
 use camera::{Camera, CameraUniform, CameraController};
+use stellar_system::StellarSystem;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -427,7 +429,8 @@ impl State {
 
         let mut planet = Planet::new();
         let subdivision: usize = 9;
-        planet.generate(subdivision as u8, &device, &queue);
+        log::info!("PLANET");
+        planet.generate(subdivision as u8);
 
         let vertices: Vec<Vertex> = (0..planet.get_vertex_count(subdivision))
             .map(|i| Vertex::from_planet_buffer(planet.get_vertices(subdivision), i))
@@ -447,12 +450,28 @@ impl State {
 
         let num_indices = planet.get_index_count(subdivision) as u32;
 
+        // let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
+        //     (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+        //         let position = glam::Vec3::new(x as f32, 0.0, z as f32) - INSTANCE_DISPLACEMENT;
 
+        //         let rotation = if position.length_squared() < f32::EPSILON {
+        //             // this is needed so an object at (0, 0, 0) won't get scaled to zero
+        //             // as Quaternions can affect scale if they're not created correctly
+        //             glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
+        //         } else {
+        //             glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
+        //         };
 
+        //         Instance {
+        //             position, rotation,
+        //         }
+        //     })
+        // }).collect::<Vec<_>>();
 
-        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let position = glam::Vec3::new(x as f32, 0.0, z as f32) - INSTANCE_DISPLACEMENT;
+        StellarSystem::new(glam::Vec3::ZERO);
+
+        let instances: Vec<Instance> = {
+                let position = glam::Vec3::new(0.0, 0.0, 0.0);
 
                 let rotation = if position.length_squared() < f32::EPSILON {
                     // this is needed so an object at (0, 0, 0) won't get scaled to zero
@@ -461,12 +480,13 @@ impl State {
                 } else {
                     glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
                 };
-
-                Instance {
-                    position, rotation,
-                }
-            })
-        }).collect::<Vec<_>>();
+                vec![
+                    Instance {
+                        position,
+                        rotation,
+                    }
+                ]
+            };
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(

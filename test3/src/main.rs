@@ -152,7 +152,7 @@ async fn run() {
     // // Soumettre les commandes
     // queue.submit(Some(encoder.finish()));
 
-    let workgroup_size = 2; // threads par workgroup (doit correspondre au shader)
+    let workgroup_size = 4; // threads par workgroup (doit correspondre au shader)
     let num_workgroups = 2; // workgroups par dispatch
     let threads_per_dispatch = workgroup_size * num_workgroups;
 

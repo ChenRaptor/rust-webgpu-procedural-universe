@@ -82,7 +82,7 @@ fn fbm_perlin_noise(px: f32, py: f32, pz: f32, octaves: u32, persistence: f32, s
 @group(0) @binding(2)
 var<uniform> offset: u32;
 
-@compute @workgroup_size(2)
+@compute @workgroup_size(4)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // let index = global_id.x;
     let index = global_id.x + offset;
