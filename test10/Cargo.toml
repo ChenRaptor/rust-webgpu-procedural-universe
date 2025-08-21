@@ -1,7 +1,7 @@
 [package]
-name = "test1"
+name = "webworker-example"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -10,7 +10,6 @@ crate-type = ["cdylib", "rlib"]
 anyhow = "1.0.99"
 bytemuck = "1.23.2"
 cgmath = "0.18.0"
-console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
 env_logger = "0.11.8"
 flume = "0.11.1"
@@ -19,16 +18,14 @@ gloo-timers = "0.3.0"
 log = "0.4.27"
 pollster = "0.4.0"
 rayon = { version = "1.11.0", optional = true }
-wasm-bindgen = "0.2.100"
 wasm-bindgen-futures = "0.4.50"
 # wgpu = { version = "26.0.1", features = ["webgl"] }
 wgpu = "26.0.1"
 winit = "0.30.12"
-js-sys = "0.3"
-
-[dependencies.web-sys]
-version = "0.3.77"
-features = [
+console_error_panic_hook = "0.1.7"
+js-sys = "0.3.77"
+wasm-bindgen = "0.2.100"
+web-sys = { version = "0.3.77", features = [
     "Blob",
     "BlobPropertyBag",
     "console",
@@ -42,23 +39,4 @@ features = [
     "Url",
     "Window",
     "Worker",
-] 
-
-[features]
-default = ["rayon"]
-
-
-[target.wasm32-unknown-unknown]
-rustflags = [
-    "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals"
-]
-
-[[bin]]
-name = "test1-bin"
-path = "src/main.rs"
-
-[[bin]]
-name = "worker-bin"
-path = "src/worker.rs"
-
-# simple-http-server -p 8000 --cors --coep --coop
+] }

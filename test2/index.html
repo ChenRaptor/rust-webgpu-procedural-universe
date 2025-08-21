@@ -15,16 +15,19 @@
             display: block;
         }
     </style>
+    <base data-trunk-public-url />
 </head>
 
 <body id="wasm-example">
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" data-bin="test1-bin" data-type="main" />
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" data-bin="worker-bin" data-type="worker" />
     <canvas id="canvas"></canvas>
-  <script type="module">
+  <!-- <script type="module">
       import init from "./pkg/test1.js";
       init().then(() => {
           console.log("WASM Loaded");
       });
-  </script>
+  </script> -->
 </body>
 
 </html>

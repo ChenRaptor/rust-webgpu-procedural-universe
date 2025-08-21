@@ -1,6 +1,5 @@
-use test1::run;
 
-
+use webworker_example::run;
 use js_sys::Array;
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{window, Blob, BlobPropertyBag, MessageEvent, Url, Worker};
@@ -13,7 +12,6 @@ fn worker_new(name: &str) -> Worker {
         .expect("origin to be available");
 
     let script = Array::new();
-    log::info!("{}", origin);
     script.push(
         &format!(r#"importScripts("{origin}/{name}.js");wasm_bindgen("{origin}/{name}_bg.wasm");"#)
             .into(),
@@ -33,7 +31,7 @@ fn worker_new(name: &str) -> Worker {
 fn main() {
     console_error_panic_hook::set_once();
 
-    let worker = worker_new("worker-bin");
+    let worker = worker_new("worker");
     let worker_clone = worker.clone();
 
     // NOTE: We must wait for the worker to report that it's ready to receive
