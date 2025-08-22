@@ -640,51 +640,62 @@ impl Planet {
     //     println!("GPU compute completed for {} vertices", vertex_count);
     // }
 
-    pub async fn generate(&mut self, subdivision: u8) {
+    pub async fn generate_worker(
+        planet_rc: Rc<RefCell<Planet>>,
+        subdivision: u8
+    ) {
         console_error_panic_hook::set_once();
 
-        // 2621442 * 9 * 4 = 94371912
-        let lod9_vertex = SharedArrayBuffer::new(94371912);
-        let lod9_vertex: Float32Array = Float32Array::new(&lod9_vertex);
+        // 2621442 * 3 * 4 = 31457304
+        let lod9_position = SharedArrayBuffer::new(31457304);
+        let lod9_position: Float32Array = Float32Array::new(&lod9_position);
+
+        // 2621442 * 3 * 4 = 31457304
+        let lod9_color = SharedArrayBuffer::new(31457304);
+        let lod9_color: Float32Array = Float32Array::new(&lod9_color);
+
+        // 2621442 * 3 * 4 = 31457304
+        let lod9_normal = SharedArrayBuffer::new(31457304);
+        let lod9_normal: Float32Array = Float32Array::new(&lod9_normal);
+
         // 2621442 * 2 * 3 * 4 = 62914608
         let lod9_indice = SharedArrayBuffer::new(62914608);
         let lod9_indice: Uint32Array = Uint32Array::new(&lod9_indice);
 
-        // 655362 * 9 * 4 = 23593032
-        let lod8_vertex = SharedArrayBuffer::new(23593032);
-        let lod8_vertex: Float32Array = Float32Array::new(&lod8_vertex);
-        // 655362 * 2 * 3 * 4 = 15728688
-        let lod8_indice = SharedArrayBuffer::new(15728688);
-        let lod8_indice: Uint32Array = Uint32Array::new(&lod8_indice);
+        // // 655362 * 9 * 4 = 23593032
+        // let lod8_vertex = SharedArrayBuffer::new(23593032);
+        // let lod8_vertex: Float32Array = Float32Array::new(&lod8_vertex);
+        // // 655362 * 2 * 3 * 4 = 15728688
+        // let lod8_indice = SharedArrayBuffer::new(15728688);
+        // let lod8_indice: Uint32Array = Uint32Array::new(&lod8_indice);
 
-        // 163842 * 9 * 4 = 5898312
-        let lod7_vertex = SharedArrayBuffer::new(5898312);
-        let lod7_vertex: Float32Array = Float32Array::new(&lod7_vertex);
-        // 163842 * 2 * 3 * 4 = 3932208
-        let lod7_indice = SharedArrayBuffer::new(3932208);
-        let lod7_indice: Uint32Array = Uint32Array::new(&lod7_indice);
+        // // 163842 * 9 * 4 = 5898312
+        // let lod7_vertex = SharedArrayBuffer::new(5898312);
+        // let lod7_vertex: Float32Array = Float32Array::new(&lod7_vertex);
+        // // 163842 * 2 * 3 * 4 = 3932208
+        // let lod7_indice = SharedArrayBuffer::new(3932208);
+        // let lod7_indice: Uint32Array = Uint32Array::new(&lod7_indice);
 
-        // 40962 * 9 * 4 = 1474632
-        let lod6_vertex = SharedArrayBuffer::new(1474632);
-        let lod6_vertex: Float32Array = Float32Array::new(&lod6_vertex);
-        // 40962 * 2 * 3 * 4 = 983088
-        let lod6_indice = SharedArrayBuffer::new(983088);
-        let lod6_indice: Uint32Array = Uint32Array::new(&lod6_indice);
+        // // 40962 * 9 * 4 = 1474632
+        // let lod6_vertex = SharedArrayBuffer::new(1474632);
+        // let lod6_vertex: Float32Array = Float32Array::new(&lod6_vertex);
+        // // 40962 * 2 * 3 * 4 = 983088
+        // let lod6_indice = SharedArrayBuffer::new(983088);
+        // let lod6_indice: Uint32Array = Uint32Array::new(&lod6_indice);
 
-        // 10242 * 9 * 4 = 368712
-        let lod5_vertex = SharedArrayBuffer::new(368712);
-        let lod5_vertex: Float32Array = Float32Array::new(&lod5_vertex);
-        // 10242 * 2 * 3 * 4 = 245808
-        let lod5_indice = SharedArrayBuffer::new(245808);
-        let lod5_indice: Uint32Array = Uint32Array::new(&lod5_indice);
+        // // 10242 * 9 * 4 = 368712
+        // let lod5_vertex = SharedArrayBuffer::new(368712);
+        // let lod5_vertex: Float32Array = Float32Array::new(&lod5_vertex);
+        // // 10242 * 2 * 3 * 4 = 245808
+        // let lod5_indice = SharedArrayBuffer::new(245808);
+        // let lod5_indice: Uint32Array = Uint32Array::new(&lod5_indice);
 
-        // 2562 * 9 * 4 = 92232
-        let lod4_vertex = SharedArrayBuffer::new(92232);
-        let lod4_vertex: Float32Array = Float32Array::new(&lod4_vertex);
-        // 2562 * 2 * 3 * 4 = 61488
-        let lod4_indice = SharedArrayBuffer::new(61488);
-        let lod4_indice: Uint32Array = Uint32Array::new(&lod4_indice);
-
+        // // 2562 * 9 * 4 = 92232
+        // let lod4_vertex = SharedArrayBuffer::new(92232);
+        // let lod4_vertex: Float32Array = Float32Array::new(&lod4_vertex);
+        // // 2562 * 2 * 3 * 4 = 61488
+        // let lod4_indice = SharedArrayBuffer::new(61488);
+        // let lod4_indice: Uint32Array = Uint32Array::new(&lod4_indice);
 
         // Create worker
         let worker = worker_new("worker-geometry");
@@ -692,61 +703,68 @@ impl Planet {
         // Create common object buffer
         let obj = Object::new();
 
-
-        Reflect::set(&obj, &JsValue::from_str("lod9_vertex"), &lod9_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod9_position"), &lod9_position).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod9_color"), &lod9_color).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod9_normal"), &lod9_normal).unwrap();
         Reflect::set(&obj, &JsValue::from_str("lod9_indice"), &lod9_indice).unwrap();
 
-        Reflect::set(&obj, &JsValue::from_str("lod8_vertex"), &lod8_vertex).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod8_indice"), &lod8_indice).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod8_vertex"), &lod8_vertex).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod8_indice"), &lod8_indice).unwrap();
 
-        Reflect::set(&obj, &JsValue::from_str("lod7_vertex"), &lod7_vertex).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod7_indice"), &lod7_indice).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod7_vertex"), &lod7_vertex).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod7_indice"), &lod7_indice).unwrap();
 
-        Reflect::set(&obj, &JsValue::from_str("lod6_vertex"), &lod6_vertex).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod6_indice"), &lod6_indice).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod6_vertex"), &lod6_vertex).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod6_indice"), &lod6_indice).unwrap();
 
-        Reflect::set(&obj, &JsValue::from_str("lod5_vertex"), &lod5_vertex).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod5_indice"), &lod5_indice).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod5_vertex"), &lod5_vertex).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod5_indice"), &lod5_indice).unwrap();
 
-        Reflect::set(&obj, &JsValue::from_str("lod4_vertex"), &lod4_vertex).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod4_indice"), &lod4_indice).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod4_vertex"), &lod4_vertex).unwrap();
+        // Reflect::set(&obj, &JsValue::from_str("lod4_indice"), &lod4_indice).unwrap();
 
-
-
-
-        let mut sent = false;
+        let worker_is_ready = Rc::new(RefCell::new(false));
+        let worker_is_ready_clone = worker_is_ready.clone();
+        let planet_clone = planet_rc.clone();
         let worker_clone = worker.clone();
+
         let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
+
             let data = msg.data();
-            // Si le worker est prêt (message vide)
-            if !sent {
-                // On vérifie que le message est un Array vide (comme dans worker.rs)
+            if !*worker_is_ready_clone.borrow() {
                 if Array::is_array(&data) && Array::from(&data).length() == 0 {
                     worker_clone.post_message(&obj).expect("send SharedArrayBuffer");
-                    sent = true;
+                    *worker_is_ready_clone.borrow_mut() = true;
                     return;
                 }
             }
-            // Si on reçoit un Array avec des nombres (protocole fallback)
-            if Array::is_array(&data) {
-                let array = Array::from(&data);
-                if array.length() >= 3 {
-                    let a = array.get(0).as_f64().unwrap_or(0.0) as u32;
-                    let b = array.get(1).as_f64().unwrap_or(0.0) as u32;
-                    let result = array.get(2).as_f64().unwrap_or(0.0) as u32;
-                    web_sys::console::log_1(&format!("{a} x {b} = {result} - JOJOBA").into());
-                    return;
+
+            if data.is_object() && !Array::is_array(&data) {
+                if Reflect::has(&data, &JsValue::from_str("lod9_position")).unwrap_or(false) {
+
+                    let lod9_position = Reflect::get(&data, &JsValue::from_str("lod9_position")).unwrap();
+                    let lod9_position = Float32Array::new(&lod9_position);
+
+                    let lod9_color = Reflect::get(&data, &JsValue::from_str("lod9_color")).unwrap();
+                    let lod9_color = Float32Array::new(&lod9_color);
+
+                    let lod9_normal = Reflect::get(&data, &JsValue::from_str("lod9_normal")).unwrap();
+                    let lod9_normal = Float32Array::new(&lod9_normal);
+
+                    let lod9_indice = Reflect::get(&data, &JsValue::from_str("lod9_indice")).unwrap();
+                    let lod9_indice = Uint32Array::new(&lod9_indice);
+
+                    // let mut vec1 = vec![0.0; lod9_vertex.length() as usize];
+                    // lod9_vertex.copy_to(&mut vec1[..]);
+                    // planet_clone.borrow_mut().lod_levels[subdivision as usize].sphere_vertices = vec1;
+                    // let mut vec2 = vec![0; lod9_indice.length() as usize];
+                    // lod9_indice.copy_to(&mut vec2[..]);
+                    // planet_clone.borrow_mut().lod_levels[subdivision as usize].sphere_indices = vec2;
                 }
             }
-            // Sinon, on affiche la valeur du SharedArrayBuffer
-            let value0 = arr.get_index(0);
-            let value1 = arr.get_index(1);
-            web_sys::console::log_1(&format!("[main] Shared value[0] = {}, value[1] = {}", value0, value1).into());
         }) as Box<dyn FnMut(MessageEvent)>);
         worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
         onmessage.forget();
-
-
     }
 
     // pub async fn generate(&mut self, subdivision: u8) {
