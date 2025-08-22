@@ -9,6 +9,91 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use wgpu::util::DeviceExt;
 
+use js_sys::{Array, Float32Array, Float64Array};
+use wasm_bindgen::{prelude::*, JsCast};
+use web_sys::{window, Blob, BlobPropertyBag, MessageEvent, Url, Worker};
+use js_sys::{SharedArrayBuffer, Uint32Array, Reflect, Object};
+use wasm_bindgen::JsValue;
+
+fn worker_new(name: &str) -> Worker {
+    let origin = window()
+        .expect("window to be available")
+        .location()
+        .origin()
+        .expect("origin to be available");
+
+    let script = Array::new();
+    script.push(
+        &format!(r#"importScripts("{origin}/{name}.js");wasm_bindgen("{origin}/{name}_bg.wasm");"#)
+            .into(),
+    );
+
+    let blob = Blob::new_with_str_sequence_and_options(
+        &script,
+        BlobPropertyBag::new().type_("text/javascript"),
+    )
+    .expect("blob creation succeeds");
+
+    let url = Url::create_object_url_with_blob(&blob).expect("url creation succeeds");
+
+    Worker::new(&url).expect("failed to spawn worker")
+}
+
+fn main() {
+    console_error_panic_hook::set_once();
+
+    let sab = SharedArrayBuffer::new(1024); // 1024 bytes
+    let arr = Uint32Array::new(&sab);
+    arr.set_index(0, 123); // Exemple d'écriture
+
+    let worker = worker_new("worker");
+
+    let obj = Object::new();
+    // Crée une propriété "sab" sur l’objet JavaScript obj et lui assigne la valeur du SharedArrayBuffer Rust sab.
+    Reflect::set(&obj, &JsValue::from_str("sab"), &sab).unwrap();
+
+    // On attend le message "ready" du worker avant d'envoyer le buffer
+    let mut sent = false;
+
+    /*
+    On crée un worker_clone parce que la variable worker doit être utilisée à l’intérieur du closure (le handler d’événement), mais Rust impose que toutes les variables capturées par un closure move soient possédées ou clonées.
+
+    - Le closure peut être appelé plusieurs fois, et il doit posséder sa propre référence au worker pour pouvoir appeler post_message.
+    - Worker implémente le trait Clone, ce qui permet de dupliquer la référence JS sous-jacente sans créer un nouveau worker.
+     */
+    let worker_clone = worker.clone();
+    let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
+        let data = msg.data();
+        // Si le worker est prêt (message vide)
+        if !sent {
+            // On vérifie que le message est un Array vide (comme dans worker.rs)
+            if Array::is_array(&data) && Array::from(&data).length() == 0 {
+                worker_clone.post_message(&obj).expect("send SharedArrayBuffer");
+                sent = true;
+                return;
+            }
+        }
+        // Si on reçoit un Array avec des nombres (protocole fallback)
+        if Array::is_array(&data) {
+            let array = Array::from(&data);
+            if array.length() >= 3 {
+                let a = array.get(0).as_f64().unwrap_or(0.0) as u32;
+                let b = array.get(1).as_f64().unwrap_or(0.0) as u32;
+                let result = array.get(2).as_f64().unwrap_or(0.0) as u32;
+                web_sys::console::log_1(&format!("{a} x {b} = {result} - JOJOBA").into());
+                return;
+            }
+        }
+        // Sinon, on affiche la valeur du SharedArrayBuffer
+        let value0 = arr.get_index(0);
+        let value1 = arr.get_index(1);
+        web_sys::console::log_1(&format!("[main] Shared value[0] = {}, value[1] = {}", value0, value1).into());
+    }) as Box<dyn FnMut(MessageEvent)>);
+    worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+    onmessage.forget();
+}
+
+
 
 
 #[repr(C)]
@@ -556,146 +641,255 @@ impl Planet {
     // }
 
     pub async fn generate(&mut self, subdivision: u8) {
-        // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
-        static mut KD_TREE_MAX: Option<KDTree3D> = None;
+        console_error_panic_hook::set_once();
 
-        if subdivision > self.max_subdivision {
-            println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
-            return;
-        }
+        // 2621442 * 9 * 4 = 94371912
+        let lod9_vertex = SharedArrayBuffer::new(94371912);
+        let lod9_vertex: Float32Array = Float32Array::new(&lod9_vertex);
+        // 2621442 * 2 * 3 * 4 = 62914608
+        let lod9_indice = SharedArrayBuffer::new(62914608);
+        let lod9_indice: Uint32Array = Uint32Array::new(&lod9_indice);
 
-        if self.lod_levels.len() <= subdivision as usize {
-            println!("Planet: Resizing lod_levels from {} to {}", self.lod_levels.len(), subdivision + 1);
-            self.lod_levels.resize(self.max_subdivision as usize + 1, Sphere {
-                sphere_vertices: Vec::new(),
-                sphere_indices: Vec::new(),
-            });
-        }
+        // 655362 * 9 * 4 = 23593032
+        let lod8_vertex = SharedArrayBuffer::new(23593032);
+        let lod8_vertex: Float32Array = Float32Array::new(&lod8_vertex);
+        // 655362 * 2 * 3 * 4 = 15728688
+        let lod8_indice = SharedArrayBuffer::new(15728688);
+        let lod8_indice: Uint32Array = Uint32Array::new(&lod8_indice);
 
-        if !self.lod_levels[subdivision as usize].sphere_vertices.is_empty() {
-            return;
-        }
+        // 163842 * 9 * 4 = 5898312
+        let lod7_vertex = SharedArrayBuffer::new(5898312);
+        let lod7_vertex: Float32Array = Float32Array::new(&lod7_vertex);
+        // 163842 * 2 * 3 * 4 = 3932208
+        let lod7_indice = SharedArrayBuffer::new(3932208);
+        let lod7_indice: Uint32Array = Uint32Array::new(&lod7_indice);
 
-        // Générer la subdivision maximale si nécessaire
-        if self.lod_max_solid.is_none() {
-            println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
-            let mut max_solid = IcoSphere::new();
-            max_solid.generate(self.max_subdivision as u32);
+        // 40962 * 9 * 4 = 1474632
+        let lod6_vertex = SharedArrayBuffer::new(1474632);
+        let lod6_vertex: Float32Array = Float32Array::new(&lod6_vertex);
+        // 40962 * 2 * 3 * 4 = 983088
+        let lod6_indice = SharedArrayBuffer::new(983088);
+        let lod6_indice: Uint32Array = Uint32Array::new(&lod6_indice);
 
-            // Construire le k-d tree sur les sommets de subdivision max
-            let mut points_max = Vec::new();
-            points_max.reserve(max_solid.vertices.len());
-            for vertex in &max_solid.vertices {
-                points_max.push(*vertex);
-            }
+        // 10242 * 9 * 4 = 368712
+        let lod5_vertex = SharedArrayBuffer::new(368712);
+        let lod5_vertex: Float32Array = Float32Array::new(&lod5_vertex);
+        // 10242 * 2 * 3 * 4 = 245808
+        let lod5_indice = SharedArrayBuffer::new(245808);
+        let lod5_indice: Uint32Array = Uint32Array::new(&lod5_indice);
 
-            unsafe {
-                KD_TREE_MAX = Some(KDTree3D::new(&points_max));
-            }
+        // 2562 * 9 * 4 = 92232
+        let lod4_vertex = SharedArrayBuffer::new(92232);
+        let lod4_vertex: Float32Array = Float32Array::new(&lod4_vertex);
+        // 2562 * 2 * 3 * 4 = 61488
+        let lod4_indice = SharedArrayBuffer::new(61488);
+        let lod4_indice: Uint32Array = Uint32Array::new(&lod4_indice);
 
-            // Calculer valeurs pour subdivision max
-            self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
-            self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
 
-            for (i, vertex) in max_solid.vertices.iter().enumerate() {
-                let (v, c) = self.compute_vertex_data(*vertex);
-                self.lod_max_vertices[i] = v;
-                self.lod_max_colors[i] = c;
-            }
+        // Create worker
+        let worker = worker_new("worker-geometry");
 
-            self.lod_max_solid = Some(max_solid);
-        }
+        // Create common object buffer
+        let obj = Object::new();
 
-        // Choisir la source de géométrie
-        let solid = if subdivision == self.max_subdivision {
-            println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
-            self.lod_max_solid.as_ref().unwrap()
-        } else {
-            // Pour les subdivisions inférieures, on devrait créer une nouvelle IcoSphere
-            // mais gardons l'existante pour l'instant
-            self.lod_max_solid.as_ref().unwrap()
-        };
 
-        let vertex_count = solid.vertices.len();
-        let index_count = solid.indices.len();
-        let vertices = &solid.vertices;
+        Reflect::set(&obj, &JsValue::from_str("lod9_vertex"), &lod9_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod9_indice"), &lod9_indice).unwrap();
 
-        self.sphere_vertices.clear();
-        self.sphere_indices.clear();
-        self.sphere_vertices.resize(vertex_count * 9, 0.0);
-        self.sphere_indices.reserve(index_count);
+        Reflect::set(&obj, &JsValue::from_str("lod8_vertex"), &lod8_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod8_indice"), &lod8_indice).unwrap();
 
-        // Remplir les vertices
-        for (i, vertex) in vertices.iter().enumerate() {
-            // Trouver le vertex le plus proche dans la subdivision max avec KDTree
-            let nearest_index = unsafe {
-                if let Some(ref kdtree) = KD_TREE_MAX {
-                    kdtree.nearest_neighbor(*vertex)
-                } else {
-                    0 // Fallback si pas de KDTree
+        Reflect::set(&obj, &JsValue::from_str("lod7_vertex"), &lod7_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod7_indice"), &lod7_indice).unwrap();
+
+        Reflect::set(&obj, &JsValue::from_str("lod6_vertex"), &lod6_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod6_indice"), &lod6_indice).unwrap();
+
+        Reflect::set(&obj, &JsValue::from_str("lod5_vertex"), &lod5_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod5_indice"), &lod5_indice).unwrap();
+
+        Reflect::set(&obj, &JsValue::from_str("lod4_vertex"), &lod4_vertex).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod4_indice"), &lod4_indice).unwrap();
+
+
+
+
+        let mut sent = false;
+        let worker_clone = worker.clone();
+        let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
+            let data = msg.data();
+            // Si le worker est prêt (message vide)
+            if !sent {
+                // On vérifie que le message est un Array vide (comme dans worker.rs)
+                if Array::is_array(&data) && Array::from(&data).length() == 0 {
+                    worker_clone.post_message(&obj).expect("send SharedArrayBuffer");
+                    sent = true;
+                    return;
                 }
-            };
-            let nearest_vertex = self.lod_max_vertices[nearest_index];
-            let nearest_color = self.lod_max_colors[nearest_index];
+            }
+            // Si on reçoit un Array avec des nombres (protocole fallback)
+            if Array::is_array(&data) {
+                let array = Array::from(&data);
+                if array.length() >= 3 {
+                    let a = array.get(0).as_f64().unwrap_or(0.0) as u32;
+                    let b = array.get(1).as_f64().unwrap_or(0.0) as u32;
+                    let result = array.get(2).as_f64().unwrap_or(0.0) as u32;
+                    web_sys::console::log_1(&format!("{a} x {b} = {result} - JOJOBA").into());
+                    return;
+                }
+            }
+            // Sinon, on affiche la valeur du SharedArrayBuffer
+            let value0 = arr.get_index(0);
+            let value1 = arr.get_index(1);
+            web_sys::console::log_1(&format!("[main] Shared value[0] = {}, value[1] = {}", value0, value1).into());
+        }) as Box<dyn FnMut(MessageEvent)>);
+        worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+        onmessage.forget();
 
-            // Position
-            self.sphere_vertices[9 * i + 0] = nearest_vertex.x;
-            self.sphere_vertices[9 * i + 1] = nearest_vertex.y;
-            self.sphere_vertices[9 * i + 2] = nearest_vertex.z;
 
-            // Couleur
-            self.sphere_vertices[9 * i + 3] = nearest_color.x;
-            self.sphere_vertices[9 * i + 4] = nearest_color.y;
-            self.sphere_vertices[9 * i + 5] = nearest_color.z;
-        }
-
-        // Indices
-        self.sphere_indices.extend_from_slice(&solid.indices);
-
-        // Calcul des normales par accumulation
-        let mut normals = vec![Vec3::ZERO; vertex_count];
-        for triangle in self.sphere_indices.chunks(3) {
-            let i0 = triangle[0] as usize;
-            let i1 = triangle[1] as usize;
-            let i2 = triangle[2] as usize;
-
-            let v0 = Vec3::new(
-                self.sphere_vertices[9 * i0],
-                self.sphere_vertices[9 * i0 + 1],
-                self.sphere_vertices[9 * i0 + 2],
-            );
-            let v1 = Vec3::new(
-                self.sphere_vertices[9 * i1],
-                self.sphere_vertices[9 * i1 + 1],
-                self.sphere_vertices[9 * i1 + 2],
-            );
-            let v2 = Vec3::new(
-                self.sphere_vertices[9 * i2],
-                self.sphere_vertices[9 * i2 + 1],
-                self.sphere_vertices[9 * i2 + 2],
-            );
-
-            let edge1 = v1 - v0;
-            let edge2 = v2 - v0;
-            let normal = edge1.cross(edge2).normalize();
-
-            normals[i0] += normal;
-            normals[i1] += normal;
-            normals[i2] += normal;
-        }
-
-        // Normaliser et assigner les normales
-        for (i, normal) in normals.iter().enumerate() {
-            let n = normal.normalize();
-            self.sphere_vertices[9 * i + 6] = n.x;
-            self.sphere_vertices[9 * i + 7] = n.y;
-            self.sphere_vertices[9 * i + 8] = n.z;
-        }
-
-        // Sauvegarder dans le niveau LOD
-        self.lod_levels[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
-        self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
     }
+
+    // pub async fn generate(&mut self, subdivision: u8) {
+    //     // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
+    //     static mut KD_TREE_MAX: Option<KDTree3D> = None;
+
+    //     if subdivision > self.max_subdivision {
+    //         println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
+    //         return;
+    //     }
+
+    //     if self.lod_levels.len() <= subdivision as usize {
+    //         println!("Planet: Resizing lod_levels from {} to {}", self.lod_levels.len(), subdivision + 1);
+    //         self.lod_levels.resize(self.max_subdivision as usize + 1, Sphere {
+    //             sphere_vertices: Vec::new(),
+    //             sphere_indices: Vec::new(),
+    //         });
+    //     }
+
+    //     if !self.lod_levels[subdivision as usize].sphere_vertices.is_empty() {
+    //         return;
+    //     }
+
+    //     // Générer la subdivision maximale si nécessaire
+    //     if self.lod_max_solid.is_none() {
+    //         println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
+    //         let mut max_solid = IcoSphere::new();
+    //         max_solid.generate(self.max_subdivision as u32);
+
+    //         // Construire le k-d tree sur les sommets de subdivision max
+    //         let mut points_max = Vec::new();
+    //         points_max.reserve(max_solid.vertices.len());
+    //         for vertex in &max_solid.vertices {
+    //             points_max.push(*vertex);
+    //         }
+
+    //         unsafe {
+    //             KD_TREE_MAX = Some(KDTree3D::new(&points_max));
+    //         }
+
+    //         // Calculer valeurs pour subdivision max
+    //         self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
+    //         self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
+
+    //         for (i, vertex) in max_solid.vertices.iter().enumerate() {
+    //             let (v, c) = self.compute_vertex_data(*vertex);
+    //             self.lod_max_vertices[i] = v;
+    //             self.lod_max_colors[i] = c;
+    //         }
+
+    //         self.lod_max_solid = Some(max_solid);
+    //     }
+
+    //     // Choisir la source de géométrie
+    //     let solid = if subdivision == self.max_subdivision {
+    //         println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
+    //         self.lod_max_solid.as_ref().unwrap()
+    //     } else {
+    //         // Pour les subdivisions inférieures, on devrait créer une nouvelle IcoSphere
+    //         // mais gardons l'existante pour l'instant
+    //         self.lod_max_solid.as_ref().unwrap()
+    //     };
+
+    //     let vertex_count = solid.vertices.len();
+    //     let index_count = solid.indices.len();
+    //     let vertices = &solid.vertices;
+
+    //     self.sphere_vertices.clear();
+    //     self.sphere_indices.clear();
+    //     self.sphere_vertices.resize(vertex_count * 9, 0.0);
+    //     self.sphere_indices.reserve(index_count);
+
+    //     // Remplir les vertices
+    //     for (i, vertex) in vertices.iter().enumerate() {
+    //         // Trouver le vertex le plus proche dans la subdivision max avec KDTree
+    //         let nearest_index = unsafe {
+    //             if let Some(ref kdtree) = KD_TREE_MAX {
+    //                 kdtree.nearest_neighbor(*vertex)
+    //             } else {
+    //                 0 // Fallback si pas de KDTree
+    //             }
+    //         };
+    //         let nearest_vertex = self.lod_max_vertices[nearest_index];
+    //         let nearest_color = self.lod_max_colors[nearest_index];
+
+    //         // Position
+    //         self.sphere_vertices[9 * i + 0] = nearest_vertex.x;
+    //         self.sphere_vertices[9 * i + 1] = nearest_vertex.y;
+    //         self.sphere_vertices[9 * i + 2] = nearest_vertex.z;
+
+    //         // Couleur
+    //         self.sphere_vertices[9 * i + 3] = nearest_color.x;
+    //         self.sphere_vertices[9 * i + 4] = nearest_color.y;
+    //         self.sphere_vertices[9 * i + 5] = nearest_color.z;
+    //     }
+
+    //     // Indices
+    //     self.sphere_indices.extend_from_slice(&solid.indices);
+
+    //     // Calcul des normales par accumulation
+    //     let mut normals = vec![Vec3::ZERO; vertex_count];
+    //     for triangle in self.sphere_indices.chunks(3) {
+    //         let i0 = triangle[0] as usize;
+    //         let i1 = triangle[1] as usize;
+    //         let i2 = triangle[2] as usize;
+
+    //         let v0 = Vec3::new(
+    //             self.sphere_vertices[9 * i0],
+    //             self.sphere_vertices[9 * i0 + 1],
+    //             self.sphere_vertices[9 * i0 + 2],
+    //         );
+    //         let v1 = Vec3::new(
+    //             self.sphere_vertices[9 * i1],
+    //             self.sphere_vertices[9 * i1 + 1],
+    //             self.sphere_vertices[9 * i1 + 2],
+    //         );
+    //         let v2 = Vec3::new(
+    //             self.sphere_vertices[9 * i2],
+    //             self.sphere_vertices[9 * i2 + 1],
+    //             self.sphere_vertices[9 * i2 + 2],
+    //         );
+
+    //         let edge1 = v1 - v0;
+    //         let edge2 = v2 - v0;
+    //         let normal = edge1.cross(edge2).normalize();
+
+    //         normals[i0] += normal;
+    //         normals[i1] += normal;
+    //         normals[i2] += normal;
+    //     }
+
+    //     // Normaliser et assigner les normales
+    //     for (i, normal) in normals.iter().enumerate() {
+    //         let n = normal.normalize();
+    //         self.sphere_vertices[9 * i + 6] = n.x;
+    //         self.sphere_vertices[9 * i + 7] = n.y;
+    //         self.sphere_vertices[9 * i + 8] = n.z;
+    //     }
+
+    //     // Sauvegarder dans le niveau LOD
+    //     self.lod_levels[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
+    //     self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
+    // }
 
     // Fonction helper pour calculer les vertices avec Perlin noise (thread-safe)
     fn compute_vertex_data(&self, v: Vec3) -> (Vec3, Vec3) {
@@ -867,6 +1061,8 @@ impl Planet {
 //         *self.is_ready.borrow()
 //     }
 // }
+
+
 
 
 pub struct PlanetHandle {

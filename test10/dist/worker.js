@@ -201,7 +201,7 @@ let wasm_bindgen;
         // TODO we could test for more things here, like `Set`s and `Map`s.
         return className;
     }
-    function __wbg_adapter_20(arg0, arg1, arg2) {
+    function __wbg_adapter_16(arg0, arg1, arg2) {
         wasm.closure3_externref_shim(arg0, arg1, arg2);
     }
 
@@ -258,11 +258,11 @@ let wasm_bindgen;
                 wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
             }
         };
-        imports.wbg.__wbg_from_2a5d3e218e67aa85 = function(arg0) {
-            const ret = Array.from(arg0);
+        imports.wbg.__wbg_get_67b2ba62fc30de12 = function() { return handleError(function (arg0, arg1) {
+            const ret = Reflect.get(arg0, arg1);
             return ret;
-        };
-        imports.wbg.__wbg_get_b9b93047fe3cf45b = function(arg0, arg1) {
+        }, arguments) };
+        imports.wbg.__wbg_getindex_d332410fbea81873 = function(arg0, arg1) {
             const ret = arg0[arg1 >>> 0];
             return ret;
         };
@@ -277,6 +277,10 @@ let wasm_bindgen;
             const ret = new Error();
             return ret;
         };
+        imports.wbg.__wbg_new_e3b321dcfef89fc7 = function(arg0) {
+            const ret = new Uint32Array(arg0);
+            return ret;
+        };
         imports.wbg.__wbg_newnoargs_105ed471475aaf50 = function(arg0, arg1) {
             const ret = new Function(getStringFromWasm0(arg0, arg1));
             return ret;
@@ -284,9 +288,8 @@ let wasm_bindgen;
         imports.wbg.__wbg_postMessage_83a8d58d3fcb6c13 = function() { return handleError(function (arg0, arg1) {
             arg0.postMessage(arg1);
         }, arguments) };
-        imports.wbg.__wbg_push_737cfc8c1432c2c6 = function(arg0, arg1) {
-            const ret = arg0.push(arg1);
-            return ret;
+        imports.wbg.__wbg_setindex_c430b78b97744fcc = function(arg0, arg1, arg2) {
+            arg0[arg1 >>> 0] = arg2 >>> 0;
         };
         imports.wbg.__wbg_setonmessage_7530ae0596a01ccb = function(arg0, arg1) {
             arg0.onmessage = arg1;
@@ -314,8 +317,8 @@ let wasm_bindgen;
             const ret = typeof window === 'undefined' ? null : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         };
-        imports.wbg.__wbindgen_closure_wrapper88 = function(arg0, arg1, arg2) {
-            const ret = makeClosure(arg0, arg1, 4, __wbg_adapter_20);
+        imports.wbg.__wbindgen_closure_wrapper79 = function(arg0, arg1, arg2) {
+            const ret = makeClosure(arg0, arg1, 4, __wbg_adapter_16);
             return ret;
         };
         imports.wbg.__wbindgen_debug_string = function(arg0, arg1) {
@@ -337,16 +340,6 @@ let wasm_bindgen;
         };
         imports.wbg.__wbindgen_is_undefined = function(arg0) {
             const ret = arg0 === undefined;
-            return ret;
-        };
-        imports.wbg.__wbindgen_number_get = function(arg0, arg1) {
-            const obj = arg1;
-            const ret = typeof(obj) === 'number' ? obj : undefined;
-            getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-        };
-        imports.wbg.__wbindgen_number_new = function(arg0) {
-            const ret = arg0;
             return ret;
         };
         imports.wbg.__wbindgen_string_new = function(arg0, arg1) {
