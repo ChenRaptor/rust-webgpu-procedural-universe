@@ -19,10 +19,18 @@ fn main() {
         // Vérifie si on a reçu un SharedArrayBuffer
         if let Ok(lod9_position) = Reflect::get(&data, &JsValue::from_str("lod9_position")) {
             if !lod9_position.is_undefined() {
+
+                let subdivision: usize = 5;
                 
                 let mut planet = Planet::new();
-                planet.generate(9);
-                let planet_vertex = &planet.lod_levels[9];
+                planet.generate(subdivision as u8);
+                let planet_vertex = &planet.lod_levels[subdivision];
+
+
+                web_sys::console::log_1(&format!("[worker] planet_vertex.indice = {}", planet_vertex.indice.len()).into());
+                web_sys::console::log_1(&format!("[worker] planet_vertex.position = {}", planet_vertex.position.len()).into());
+                web_sys::console::log_1(&format!("[worker] planet_vertex.color = {}", planet_vertex.color.len()).into());
+                web_sys::console::log_1(&format!("[worker] planet_vertex.normal = {}", planet_vertex.normal.len()).into());
 
                 // Position
                 let lod9_position_arr = Float32Array::new(&lod9_position);
@@ -45,7 +53,7 @@ fn main() {
                 let lod9_indice_arr = Uint32Array::new(&lod9_indice);
                 lod9_indice_arr.copy_from(&planet_vertex.indice[..]);
 
-                web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(9)).into());
+                web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(subdivision)).into());
                 scope_clone.post_message(&data).expect("Worker send response");
                 return;
             }

@@ -1,15 +1,14 @@
 use glam::Vec3;
-use crate::geometry::icosphere::IcoSphere;
+use crate::geometry::{icosphere::IcoSphere};
 use crate::geometry::kdtree3d::KDTree3D;
 use crate::geometry::fbm::fbm_perlin_noise;
 use crate::Vertex;
 use std::f32::consts::PI;
-use wasm_bindgen_futures::spawn_local;
 use std::rc::Rc;
 use std::cell::RefCell;
 use wgpu::util::DeviceExt;
 
-use js_sys::{Array, Float32Array, Float64Array};
+use js_sys::{Array, Float32Array};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{window, Blob, BlobPropertyBag, MessageEvent, Url, Worker};
 use js_sys::{SharedArrayBuffer, Uint32Array, Reflect, Object};
@@ -38,62 +37,6 @@ fn worker_new(name: &str) -> Worker {
 
     Worker::new(&url).expect("failed to spawn worker")
 }
-
-fn main() {
-    console_error_panic_hook::set_once();
-
-    let sab = SharedArrayBuffer::new(1024); // 1024 bytes
-    let arr = Uint32Array::new(&sab);
-    arr.set_index(0, 123); // Exemple d'écriture
-
-    let worker = worker_new("worker");
-
-    let obj = Object::new();
-    // Crée une propriété "sab" sur l’objet JavaScript obj et lui assigne la valeur du SharedArrayBuffer Rust sab.
-    Reflect::set(&obj, &JsValue::from_str("sab"), &sab).unwrap();
-
-    // On attend le message "ready" du worker avant d'envoyer le buffer
-    let mut sent = false;
-
-    /*
-    On crée un worker_clone parce que la variable worker doit être utilisée à l’intérieur du closure (le handler d’événement), mais Rust impose que toutes les variables capturées par un closure move soient possédées ou clonées.
-
-    - Le closure peut être appelé plusieurs fois, et il doit posséder sa propre référence au worker pour pouvoir appeler post_message.
-    - Worker implémente le trait Clone, ce qui permet de dupliquer la référence JS sous-jacente sans créer un nouveau worker.
-     */
-    let worker_clone = worker.clone();
-    let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
-        let data = msg.data();
-        // Si le worker est prêt (message vide)
-        if !sent {
-            // On vérifie que le message est un Array vide (comme dans worker.rs)
-            if Array::is_array(&data) && Array::from(&data).length() == 0 {
-                worker_clone.post_message(&obj).expect("send SharedArrayBuffer");
-                sent = true;
-                return;
-            }
-        }
-        // Si on reçoit un Array avec des nombres (protocole fallback)
-        if Array::is_array(&data) {
-            let array = Array::from(&data);
-            if array.length() >= 3 {
-                let a = array.get(0).as_f64().unwrap_or(0.0) as u32;
-                let b = array.get(1).as_f64().unwrap_or(0.0) as u32;
-                let result = array.get(2).as_f64().unwrap_or(0.0) as u32;
-                web_sys::console::log_1(&format!("{a} x {b} = {result} - JOJOBA").into());
-                return;
-            }
-        }
-        // Sinon, on affiche la valeur du SharedArrayBuffer
-        let value0 = arr.get_index(0);
-        let value1 = arr.get_index(1);
-        web_sys::console::log_1(&format!("[main] Shared value[0] = {}, value[1] = {}", value0, value1).into());
-    }) as Box<dyn FnMut(MessageEvent)>);
-    worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-    onmessage.forget();
-}
-
-
 
 
 #[repr(C)]
@@ -237,6 +180,13 @@ pub struct PlanetVertex {
     pub indice: Vec<u32>
 }
 
+#[derive(Clone)]
+pub struct Sphere {
+    pub sphere_vertices: Vec<f32>,
+    pub sphere_indices: Vec<u32>,
+}
+
+
 impl PlanetVertex {
     pub fn new() -> Self {
         PlanetVertex {
@@ -271,14 +221,17 @@ pub struct Planet {
     lod_max_solid: Option<IcoSphere>,
     lod_max_vertices: Vec<Vec3>,
     lod_max_colors: Vec<Vec3>,
-    // kd_tree_max: Option<KDTree3D>,
+    kd_tree_max: Option<KDTree3D>,
     pub lod_levels: Vec<PlanetVertex>,
+    pub lod_ready: bool,
+    pub lod_levels2: Vec<Sphere>,
+    pub vertex: Vec<Vertex>
 }
 
 impl Planet {
     pub fn new() -> Self {
         Planet {
-            max_subdivision: 9,
+            max_subdivision: 5,
             radius: 1.0,
             level_sea: 0.998,
             height_amplitude: 0.05,
@@ -332,8 +285,11 @@ impl Planet {
             lod_max_solid: None,
             lod_max_vertices: Vec::new(),
             lod_max_colors: Vec::new(),
-            // kd_tree_max: None,
+            kd_tree_max: None,
             lod_levels: Vec::new(),
+            lod_ready: false,
+            lod_levels2: Vec::new(),
+            vertex: Vec::new()
         }
     }
 
@@ -653,62 +609,46 @@ impl Planet {
     //     println!("GPU compute completed for {} vertices", vertex_count);
     // }
 
-    pub async fn generate_worker(
-        planet_rc: Rc<RefCell<Planet>>,
-        subdivision: u8
+    pub fn generate_worker(
+        planet_rc: &Rc<RefCell<Planet>>,
+        pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>
+        // subdivision: u8
     ) {
         console_error_panic_hook::set_once();
 
-        // 2621442 * 3 * 4 = 31457304
-        let lod9_position = SharedArrayBuffer::new(31457304);
+        // // 7864326 * 4 = 31457304
+        // let lod9_position = SharedArrayBuffer::new(31457304);
+        // let lod9_position: Float32Array = Float32Array::new(&lod9_position);
+
+        // // 7864326 * 4 = 31457304
+        // let lod9_color = SharedArrayBuffer::new(31457304);
+        // let lod9_color: Float32Array = Float32Array::new(&lod9_color);
+
+        // // 7864326 * 4 = 31457304
+        // let lod9_normal = SharedArrayBuffer::new(31457304);
+        // let lod9_normal: Float32Array = Float32Array::new(&lod9_normal);
+
+        // // 15728640 * 4 = 62914560
+        // let lod9_indice = SharedArrayBuffer::new(62914560);
+        // let lod9_indice: Uint32Array = Uint32Array::new(&lod9_indice);
+
+
+        // 30726 * 4 = 122904
+        let lod9_position = SharedArrayBuffer::new(122904);
         let lod9_position: Float32Array = Float32Array::new(&lod9_position);
 
-        // 2621442 * 3 * 4 = 31457304
-        let lod9_color = SharedArrayBuffer::new(31457304);
+        // 30726 * 4 = 122904
+        let lod9_color = SharedArrayBuffer::new(122904);
         let lod9_color: Float32Array = Float32Array::new(&lod9_color);
 
-        // 2621442 * 3 * 4 = 31457304
-        let lod9_normal = SharedArrayBuffer::new(31457304);
+        // 30726 * 4 = 122904
+        let lod9_normal = SharedArrayBuffer::new(122904);
         let lod9_normal: Float32Array = Float32Array::new(&lod9_normal);
 
-        // 2621442 * 2 * 3 * 4 = 62914608
-        let lod9_indice = SharedArrayBuffer::new(62914608);
+        // 61440 * 4 = 245760
+        let lod9_indice = SharedArrayBuffer::new(245760);
         let lod9_indice: Uint32Array = Uint32Array::new(&lod9_indice);
 
-        // // 655362 * 9 * 4 = 23593032
-        // let lod8_vertex = SharedArrayBuffer::new(23593032);
-        // let lod8_vertex: Float32Array = Float32Array::new(&lod8_vertex);
-        // // 655362 * 2 * 3 * 4 = 15728688
-        // let lod8_indice = SharedArrayBuffer::new(15728688);
-        // let lod8_indice: Uint32Array = Uint32Array::new(&lod8_indice);
-
-        // // 163842 * 9 * 4 = 5898312
-        // let lod7_vertex = SharedArrayBuffer::new(5898312);
-        // let lod7_vertex: Float32Array = Float32Array::new(&lod7_vertex);
-        // // 163842 * 2 * 3 * 4 = 3932208
-        // let lod7_indice = SharedArrayBuffer::new(3932208);
-        // let lod7_indice: Uint32Array = Uint32Array::new(&lod7_indice);
-
-        // // 40962 * 9 * 4 = 1474632
-        // let lod6_vertex = SharedArrayBuffer::new(1474632);
-        // let lod6_vertex: Float32Array = Float32Array::new(&lod6_vertex);
-        // // 40962 * 2 * 3 * 4 = 983088
-        // let lod6_indice = SharedArrayBuffer::new(983088);
-        // let lod6_indice: Uint32Array = Uint32Array::new(&lod6_indice);
-
-        // // 10242 * 9 * 4 = 368712
-        // let lod5_vertex = SharedArrayBuffer::new(368712);
-        // let lod5_vertex: Float32Array = Float32Array::new(&lod5_vertex);
-        // // 10242 * 2 * 3 * 4 = 245808
-        // let lod5_indice = SharedArrayBuffer::new(245808);
-        // let lod5_indice: Uint32Array = Uint32Array::new(&lod5_indice);
-
-        // // 2562 * 9 * 4 = 92232
-        // let lod4_vertex = SharedArrayBuffer::new(92232);
-        // let lod4_vertex: Float32Array = Float32Array::new(&lod4_vertex);
-        // // 2562 * 2 * 3 * 4 = 61488
-        // let lod4_indice = SharedArrayBuffer::new(61488);
-        // let lod4_indice: Uint32Array = Uint32Array::new(&lod4_indice);
 
         // Create worker
         let worker = worker_new("worker-geometry");
@@ -739,6 +679,7 @@ impl Planet {
         let worker_is_ready = Rc::new(RefCell::new(false));
         let worker_is_ready_clone = worker_is_ready.clone();
         let planet_clone = planet_rc.clone();
+        let pending_clone = pending.clone();
         let worker_clone = worker.clone();
 
         let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
@@ -755,6 +696,8 @@ impl Planet {
             if data.is_object() && !Array::is_array(&data) {
                 if Reflect::has(&data, &JsValue::from_str("lod9_position")).unwrap_or(false) {
 
+                    let subdivision: usize = 5; // must match buffer allocation and usage
+
                     let lod9_position = Reflect::get(&data, &JsValue::from_str("lod9_position")).unwrap();
                     let lod9_position = Float32Array::new(&lod9_position);
 
@@ -767,12 +710,36 @@ impl Planet {
                     let lod9_indice = Reflect::get(&data, &JsValue::from_str("lod9_indice")).unwrap();
                     let lod9_indice = Uint32Array::new(&lod9_indice);
 
-                    // let mut vec1 = vec![0.0; lod9_vertex.length() as usize];
-                    // lod9_vertex.copy_to(&mut vec1[..]);
-                    // planet_clone.borrow_mut().lod_levels[subdivision as usize].sphere_vertices = vec1;
-                    // let mut vec2 = vec![0; lod9_indice.length() as usize];
-                    // lod9_indice.copy_to(&mut vec2[..]);
-                    // planet_clone.borrow_mut().lod_levels[subdivision as usize].sphere_indices = vec2;
+
+                    let mut planetX = planet_clone.borrow_mut();
+
+                    planetX.lod_levels.resize(subdivision + 1, PlanetVertex::new());
+
+                    let mut vec1 = vec![0.0; lod9_position.length() as usize];
+                    lod9_position.copy_to(&mut vec1[..]);
+                    planetX.lod_levels[subdivision].position = vec1;
+
+                    let mut vec2 = vec![0.0; lod9_color.length() as usize];
+                    lod9_color.copy_to(&mut vec2[..]);
+                    planetX.lod_levels[subdivision].color = vec2;
+
+                    let mut vec3 = vec![0.0; lod9_normal.length() as usize];
+                    lod9_normal.copy_to(&mut vec3[..]);
+                    planetX.lod_levels[subdivision].normal = vec3;
+
+                    let mut vec4 = vec![0; lod9_indice.length() as usize];
+                    lod9_indice.copy_to(&mut vec4[..]);
+                    planetX.lod_levels[subdivision].indice = vec4;
+
+                    // planet_clone.borrow_mut().lod_ready = true;
+                    let pv = &planetX.lod_levels[subdivision];
+
+                    let vertices = Vertex::planet_vertex_to_vertex(pv);
+                    let vertices2 = Vertex::planet_vertex_to_vertex(pv);
+                    planetX.vertex = vertices;
+                    let indices = planetX.get_indices(subdivision).to_vec();
+
+                    *pending_clone.borrow_mut() = Some((vertices2, indices));
                 }
             }
         }) as Box<dyn FnMut(MessageEvent)>);
@@ -782,7 +749,7 @@ impl Planet {
 
 
 
-    pub async fn generate(&mut self, subdivision: u8) {
+    pub fn generate(&mut self, subdivision: u8) {
         let mut solid = IcoSphere::new();
         solid.generate(subdivision);
 
@@ -808,8 +775,8 @@ impl Planet {
 
             // Position
             position[3 * i] = v.x;
-            position[3 * i + 1] = v.x;
-            position[3 * i + 2] = v.x;
+            position[3 * i + 1] = v.y;
+            position[3 * i + 2] = v.z;
 
             // Couleur
             color[3 * i] = c.x;
@@ -869,147 +836,147 @@ impl Planet {
 
     }
 
-    // pub async fn generate(&mut self, subdivision: u8) {
-    //     // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
-    //     static mut KD_TREE_MAX: Option<KDTree3D> = None;
+    pub fn generate2(&mut self, subdivision: u8) {
+        // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
+        static mut KD_TREE_MAX: Option<KDTree3D> = None;
 
-    //     if subdivision > self.max_subdivision {
-    //         println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
-    //         return;
-    //     }
+        if subdivision > self.max_subdivision {
+            println!("Planet: Invalid subdivision {}, max is {}", subdivision, self.max_subdivision);
+            return;
+        }
 
-    //     if self.lod_levels.len() <= subdivision as usize {
-    //         println!("Planet: Resizing lod_levels from {} to {}", self.lod_levels.len(), subdivision + 1);
-    //         self.lod_levels.resize(self.max_subdivision as usize + 1, Sphere {
-    //             sphere_vertices: Vec::new(),
-    //             sphere_indices: Vec::new(),
-    //         });
-    //     }
+        if self.lod_levels.len() <= subdivision as usize {
+            println!("Planet: Resizing lod_levels from {} to {}", self.lod_levels.len(), subdivision + 1);
+            self.lod_levels2.resize(self.max_subdivision as usize + 1, Sphere {
+                sphere_vertices: Vec::new(),
+                sphere_indices: Vec::new(),
+            });
+        }
 
-    //     if !self.lod_levels[subdivision as usize].sphere_vertices.is_empty() {
-    //         return;
-    //     }
+        if !self.lod_levels2[subdivision as usize].sphere_vertices.is_empty() {
+            return;
+        }
 
-    //     // Générer la subdivision maximale si nécessaire
-    //     if self.lod_max_solid.is_none() {
-    //         println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
-    //         let mut max_solid = IcoSphere::new();
-    //         max_solid.generate(self.max_subdivision as u32);
+        // Générer la subdivision maximale si nécessaire
+        if self.lod_max_solid.is_none() {
+            println!("Planet: Generating max subdivision solid for LOD {}", self.max_subdivision);
+            let mut max_solid = IcoSphere::new();
+            max_solid.generate(self.max_subdivision as u8);
 
-    //         // Construire le k-d tree sur les sommets de subdivision max
-    //         let mut points_max = Vec::new();
-    //         points_max.reserve(max_solid.vertices.len());
-    //         for vertex in &max_solid.vertices {
-    //             points_max.push(*vertex);
-    //         }
+            // Construire le k-d tree sur les sommets de subdivision max
+            let mut points_max = Vec::new();
+            points_max.reserve(max_solid.vertices.len());
+            for vertex in &max_solid.vertices {
+                points_max.push(*vertex);
+            }
 
-    //         unsafe {
-    //             KD_TREE_MAX = Some(KDTree3D::new(&points_max));
-    //         }
+            unsafe {
+                KD_TREE_MAX = Some(KDTree3D::new(&points_max));
+            }
 
-    //         // Calculer valeurs pour subdivision max
-    //         self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
-    //         self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
+            // Calculer valeurs pour subdivision max
+            self.lod_max_vertices.resize(points_max.len(), Vec3::ZERO);
+            self.lod_max_colors.resize(points_max.len(), Vec3::ZERO);
 
-    //         for (i, vertex) in max_solid.vertices.iter().enumerate() {
-    //             let (v, c) = self.compute_vertex_data(*vertex);
-    //             self.lod_max_vertices[i] = v;
-    //             self.lod_max_colors[i] = c;
-    //         }
+            for (i, vertex) in max_solid.vertices.iter().enumerate() {
+                let (v, c) = self.compute_vertex_data(*vertex);
+                self.lod_max_vertices[i] = v;
+                self.lod_max_colors[i] = c;
+            }
 
-    //         self.lod_max_solid = Some(max_solid);
-    //     }
+            self.lod_max_solid = Some(max_solid);
+        }
 
-    //     // Choisir la source de géométrie
-    //     let solid = if subdivision == self.max_subdivision {
-    //         println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
-    //         self.lod_max_solid.as_ref().unwrap()
-    //     } else {
-    //         // Pour les subdivisions inférieures, on devrait créer une nouvelle IcoSphere
-    //         // mais gardons l'existante pour l'instant
-    //         self.lod_max_solid.as_ref().unwrap()
-    //     };
+        // Choisir la source de géométrie
+        let solid = if subdivision == self.max_subdivision {
+            println!("Planet: Using precomputed max subdivision solid for LOD {}", self.max_subdivision);
+            self.lod_max_solid.as_ref().unwrap()
+        } else {
+            // Pour les subdivisions inférieures, on devrait créer une nouvelle IcoSphere
+            // mais gardons l'existante pour l'instant
+            self.lod_max_solid.as_ref().unwrap()
+        };
 
-    //     let vertex_count = solid.vertices.len();
-    //     let index_count = solid.indices.len();
-    //     let vertices = &solid.vertices;
+        let vertex_count = solid.vertices.len();
+        let index_count = solid.indices.len();
+        let vertices = &solid.vertices;
 
-    //     self.sphere_vertices.clear();
-    //     self.sphere_indices.clear();
-    //     self.sphere_vertices.resize(vertex_count * 9, 0.0);
-    //     self.sphere_indices.reserve(index_count);
+        self.sphere_vertices.clear();
+        self.sphere_indices.clear();
+        self.sphere_vertices.resize(vertex_count * 9, 0.0);
+        self.sphere_indices.reserve(index_count);
 
-    //     // Remplir les vertices
-    //     for (i, vertex) in vertices.iter().enumerate() {
-    //         // Trouver le vertex le plus proche dans la subdivision max avec KDTree
-    //         let nearest_index = unsafe {
-    //             if let Some(ref kdtree) = KD_TREE_MAX {
-    //                 kdtree.nearest_neighbor(*vertex)
-    //             } else {
-    //                 0 // Fallback si pas de KDTree
-    //             }
-    //         };
-    //         let nearest_vertex = self.lod_max_vertices[nearest_index];
-    //         let nearest_color = self.lod_max_colors[nearest_index];
+        // Remplir les vertices
+        for (i, vertex) in vertices.iter().enumerate() {
+            // Trouver le vertex le plus proche dans la subdivision max avec KDTree
+            let nearest_index = unsafe {
+                if let Some(ref kdtree) = KD_TREE_MAX {
+                    kdtree.nearest_neighbor(*vertex)
+                } else {
+                    0 // Fallback si pas de KDTree
+                }
+            };
+            let nearest_vertex = self.lod_max_vertices[nearest_index];
+            let nearest_color = self.lod_max_colors[nearest_index];
 
-    //         // Position
-    //         self.sphere_vertices[9 * i + 0] = nearest_vertex.x;
-    //         self.sphere_vertices[9 * i + 1] = nearest_vertex.y;
-    //         self.sphere_vertices[9 * i + 2] = nearest_vertex.z;
+            // Position
+            self.sphere_vertices[9 * i + 0] = nearest_vertex.x;
+            self.sphere_vertices[9 * i + 1] = nearest_vertex.y;
+            self.sphere_vertices[9 * i + 2] = nearest_vertex.z;
 
-    //         // Couleur
-    //         self.sphere_vertices[9 * i + 3] = nearest_color.x;
-    //         self.sphere_vertices[9 * i + 4] = nearest_color.y;
-    //         self.sphere_vertices[9 * i + 5] = nearest_color.z;
-    //     }
+            // Couleur
+            self.sphere_vertices[9 * i + 3] = nearest_color.x;
+            self.sphere_vertices[9 * i + 4] = nearest_color.y;
+            self.sphere_vertices[9 * i + 5] = nearest_color.z;
+        }
 
-    //     // Indices
-    //     self.sphere_indices.extend_from_slice(&solid.indices);
+        // Indices
+        self.sphere_indices.extend_from_slice(&solid.indices);
 
-    //     // Calcul des normales par accumulation
-    //     let mut normals = vec![Vec3::ZERO; vertex_count];
-    //     for triangle in self.sphere_indices.chunks(3) {
-    //         let i0 = triangle[0] as usize;
-    //         let i1 = triangle[1] as usize;
-    //         let i2 = triangle[2] as usize;
+        // Calcul des normales par accumulation
+        let mut normals = vec![Vec3::ZERO; vertex_count];
+        for triangle in self.sphere_indices.chunks(3) {
+            let i0 = triangle[0] as usize;
+            let i1 = triangle[1] as usize;
+            let i2 = triangle[2] as usize;
 
-    //         let v0 = Vec3::new(
-    //             self.sphere_vertices[9 * i0],
-    //             self.sphere_vertices[9 * i0 + 1],
-    //             self.sphere_vertices[9 * i0 + 2],
-    //         );
-    //         let v1 = Vec3::new(
-    //             self.sphere_vertices[9 * i1],
-    //             self.sphere_vertices[9 * i1 + 1],
-    //             self.sphere_vertices[9 * i1 + 2],
-    //         );
-    //         let v2 = Vec3::new(
-    //             self.sphere_vertices[9 * i2],
-    //             self.sphere_vertices[9 * i2 + 1],
-    //             self.sphere_vertices[9 * i2 + 2],
-    //         );
+            let v0 = Vec3::new(
+                self.sphere_vertices[9 * i0],
+                self.sphere_vertices[9 * i0 + 1],
+                self.sphere_vertices[9 * i0 + 2],
+            );
+            let v1 = Vec3::new(
+                self.sphere_vertices[9 * i1],
+                self.sphere_vertices[9 * i1 + 1],
+                self.sphere_vertices[9 * i1 + 2],
+            );
+            let v2 = Vec3::new(
+                self.sphere_vertices[9 * i2],
+                self.sphere_vertices[9 * i2 + 1],
+                self.sphere_vertices[9 * i2 + 2],
+            );
 
-    //         let edge1 = v1 - v0;
-    //         let edge2 = v2 - v0;
-    //         let normal = edge1.cross(edge2).normalize();
+            let edge1 = v1 - v0;
+            let edge2 = v2 - v0;
+            let normal = edge1.cross(edge2).normalize();
 
-    //         normals[i0] += normal;
-    //         normals[i1] += normal;
-    //         normals[i2] += normal;
-    //     }
+            normals[i0] += normal;
+            normals[i1] += normal;
+            normals[i2] += normal;
+        }
 
-    //     // Normaliser et assigner les normales
-    //     for (i, normal) in normals.iter().enumerate() {
-    //         let n = normal.normalize();
-    //         self.sphere_vertices[9 * i + 6] = n.x;
-    //         self.sphere_vertices[9 * i + 7] = n.y;
-    //         self.sphere_vertices[9 * i + 8] = n.z;
-    //     }
+        // Normaliser et assigner les normales
+        for (i, normal) in normals.iter().enumerate() {
+            let n = normal.normalize();
+            self.sphere_vertices[9 * i + 6] = n.x;
+            self.sphere_vertices[9 * i + 7] = n.y;
+            self.sphere_vertices[9 * i + 8] = n.z;
+        }
 
-    //     // Sauvegarder dans le niveau LOD
-    //     self.lod_levels[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
-    //     self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
-    // }
+        // Sauvegarder dans le niveau LOD
+        self.lod_levels2[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
+        self.lod_levels2[subdivision as usize].sphere_indices = self.sphere_indices.clone();
+    }
 
     // Fonction helper pour calculer les vertices avec Perlin noise (thread-safe)
     fn compute_vertex_data(&self, v: Vec3) -> (Vec3, Vec3) {
@@ -1137,14 +1104,31 @@ impl Planet {
         &self.lod_levels[lod_level].indice
     }
 
-    
+
     pub fn get_vertex_count(&self, lod_level: usize) -> usize {
         self.lod_levels[lod_level].position.len() / 3
     }
 
-    // pub fn get_index_count(&self, lod_level: usize) -> usize {
-    //     self.lod_levels[lod_level].sphere_indices.len()
-    // }
+    pub fn get_index_count(&self, lod_level: usize) -> usize {
+        self.lod_levels[lod_level].indice.len()
+    }
+
+
+    pub fn get_vertices2(&self, lod_level: usize) -> &[f32] {
+        &self.lod_levels2[lod_level].sphere_vertices
+    }
+
+    pub fn get_indices2(&self, lod_level: usize) -> &[u32] {
+        &self.lod_levels2[lod_level].sphere_indices
+    }
+
+    pub fn get_vertex_count2(&self, lod_level: usize) -> usize {
+        self.lod_levels2[lod_level].sphere_vertices.len() / 9
+    }
+
+    pub fn get_index_count2(&self, lod_level: usize) -> usize {
+        self.lod_levels2[lod_level].sphere_indices.len()
+    }
 }
 
 
@@ -1198,7 +1182,7 @@ impl Planet {
 
 
 pub struct PlanetHandle {
-    planet: Rc<RefCell<Planet>>,
+    pub planet: Rc<RefCell<Planet>>,
     is_ready: Rc<RefCell<bool>>,
     pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
     pub vertex_buffer: Option<wgpu::Buffer>,
@@ -1218,46 +1202,57 @@ impl PlanetHandle {
         }
     }
 
-    // pub fn generate_async(&self, subdivision: u8) {
-    //     let planet = self.planet.clone();
-    //     let ready_flag = self.is_ready.clone();
-    //     let pending = self.pending.clone();
+    pub fn generate_async(&self) {
+        let planet = self.planet.clone();
+        let pending_flag = self.pending.clone();
 
-    //     spawn_local(async move {
-    //         planet.borrow_mut().generate(subdivision).await;
 
-    //         let vertices: Vec<Vertex> = (0..planet.borrow().get_vertex_count(subdivision as usize))
-    //             .map(|i| Vertex::from_planet_buffer(
-    //                 planet.borrow().get_vertices(subdivision as usize), i
-    //             ))
-    //             .collect();
+        Planet::generate_worker(&planet, pending_flag);
+    }
 
-    //         let indices: Vec<u32> = planet.borrow().get_indices(subdivision as usize).to_vec();
+    pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
 
-    //         *pending.borrow_mut() = Some((vertices, indices));
-    //         *ready_flag.borrow_mut() = true;
-    //         log::info!("Planet is ready");
-    //     });
-    // }
+        if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
 
-    // pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
-    //     if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
-    //         self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    //             label: Some("Vertex Buffer"),
-    //             contents: bytemuck::cast_slice(&vertices),
-    //             usage: wgpu::BufferUsages::VERTEX,
-    //         }));
+            // log::info!("nb_vertices: {}", vertices.len());
+            // log::info!("nb_indices: {}", indices.len());
 
-    //         self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-    //             label: Some("Index Buffer"),
-    //             contents: bytemuck::cast_slice(&indices),
-    //             usage: wgpu::BufferUsages::INDEX,
-    //         }));
 
-    //         self.num_indices = indices.len() as u32;
-    //         log::info!("Planet is uploaded");
-    //     }
-    // }
+            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some("Vertex Buffer"),
+            //     contents: bytemuck::cast_slice(&vertices),
+            //     usage: wgpu::BufferUsages::VERTEX,
+            // });
+            
+            // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //     label: Some("Index Buffer"),
+            //     contents: bytemuck::cast_slice(planet),
+            //     usage: wgpu::BufferUsages::INDEX,
+            // });
+
+            // let num_indices = planet3.get_index_count(subdivision) as u32;
+
+            // log::info!("indices: {}", num_indices);
+
+            
+            self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }));
+
+            self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }));
+
+            self.num_indices = indices.len() as u32;
+            log::info!("Planet is uploaded");
+
+            *self.is_ready.borrow_mut() = true;
+        }
+    }
 
     pub fn is_ready(&self) -> bool {
         *self.is_ready.borrow()

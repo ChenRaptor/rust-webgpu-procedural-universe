@@ -5,14 +5,24 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Trunk | WebWorker | Vanilla</title>
 
+        <style>
+            html, body, canvas {
+                width: 90vw;
+                height: 100vh;
+                margin: 0;
+                padding: 0;
+                display: block;
+            }
+        </style>
+
         <base href="/" />
-    <link rel="modulepreload" href="/app-1c3e995c7f91e4d5.js" crossorigin="anonymous" integrity="sha384-UpY0JhBO8ceW9rUrHQ1iaqJ07VBuOKRnqGhbIZ17AiEzHa5qOGOrSS3DyO0LzkVc"><link rel="preload" href="/app-1c3e995c7f91e4d5_bg.wasm" crossorigin="anonymous" integrity="sha384-Wob02Jwkv0uGuuFyIpdYgGbaj0/rkWx1UghzD+Bw04iBA9EvBqZIvnbqnHw4eY4P" as="fetch" type="application/wasm"></head>
+    <link rel="modulepreload" href="/app-8a8e4081361cec02.js" crossorigin="anonymous" integrity="sha384-+wOQXEeFPnZCSgHQThHDxb203qSfQixdq3hCLfwVVLPI4L16106/iKEmayScNDfR"><link rel="preload" href="/app-8a8e4081361cec02_bg.wasm" crossorigin="anonymous" integrity="sha384-EHGvKjLMInXXxekZ4Bb15hNNZB4A7x8nBRNeVxjL7txU4gR5KCwTmhrn3Hre4SQW" as="fetch" type="application/wasm"></head>
     <body>
         <canvas id="canvas"></canvas>
         
 <script type="module">
-import init, * as bindings from '/app-1c3e995c7f91e4d5.js';
-const wasm = await init({ module_or_path: '/app-1c3e995c7f91e4d5_bg.wasm' });
+import init, * as bindings from '/app-8a8e4081361cec02.js';
+const wasm = await init({ module_or_path: '/app-8a8e4081361cec02_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -21,6 +31,7 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
+        
         
     <script>"use strict";
 
