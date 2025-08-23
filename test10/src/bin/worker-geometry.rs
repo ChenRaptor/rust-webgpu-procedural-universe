@@ -1,4 +1,4 @@
-use js_sys::{Array, Uint32Array, Float32Array, Reflect};
+use js_sys::{Array, Float32Array, Reflect, Uint32Array, Uint8Array};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
 use wasm_bindgen::JsValue;
@@ -17,14 +17,15 @@ fn main() {
 
         let data: JsValue = msg.data();
         // Vérifie si on a reçu un SharedArrayBuffer
-        if let Ok(lod9_position) = Reflect::get(&data, &JsValue::from_str("lod9_position")) {
-            if !lod9_position.is_undefined() {
+        if let Ok(config) = Reflect::get(&data, &JsValue::from_str("config")) {
+            if !config.is_undefined() {
 
-                let subdivision: usize = 5;
+                let config_data = Uint8Array::new(&config);
+                let lod = config_data.get_index(0);
                 
                 let mut planet = Planet::new();
-                planet.generate(subdivision as u8);
-                let planet_vertex = &planet.lod_levels[subdivision];
+                planet.generate(lod);
+                let planet_vertex = &planet.lod_levels[lod as usize];
 
                 web_sys::console::log_1(&format!("[worker] planet_vertex.indice = {}", planet_vertex.indice.len()).into());
                 web_sys::console::log_1(&format!("[worker] planet_vertex.position = {}", planet_vertex.position.len()).into());
@@ -32,36 +33,27 @@ fn main() {
                 web_sys::console::log_1(&format!("[worker] planet_vertex.normal = {}", planet_vertex.normal.len()).into());
 
                 // Position
+                let lod9_position = Reflect::get(&data, &JsValue::from_str("lod_pos")).unwrap_or(JsValue::NULL);
                 let lod9_position_arr = Float32Array::new(&lod9_position);
                 lod9_position_arr.copy_from(&planet_vertex.position[..]);
 
                 // Color
-                let lod9_color = Reflect::get(&data, &JsValue::from_str("lod9_color")).unwrap_or(JsValue::NULL);
+                let lod9_color = Reflect::get(&data, &JsValue::from_str("lod_col")).unwrap_or(JsValue::NULL);
                 let lod9_color_arr = Float32Array::new(&lod9_color);
                 lod9_color_arr.copy_from(&planet_vertex.color[..]);
 
 
                 // Normal
-                let lod9_normal = Reflect::get(&data, &JsValue::from_str("lod9_normal")).unwrap_or(JsValue::NULL);
+                let lod9_normal = Reflect::get(&data, &JsValue::from_str("lod_nor")).unwrap_or(JsValue::NULL);
                 let lod9_normal_arr = Float32Array::new(&lod9_normal);
                 lod9_normal_arr.copy_from(&planet_vertex.normal[..]);
 
                 // Indice
-                let lod9_indice = Reflect::get(&data, &JsValue::from_str("lod9_indice")).unwrap_or(JsValue::NULL);
+                let lod9_indice = Reflect::get(&data, &JsValue::from_str("lod_ind")).unwrap_or(JsValue::NULL);
                 let lod9_indice_arr = Uint32Array::new(&lod9_indice);
                 lod9_indice_arr.copy_from(&planet_vertex.indice[..]);
 
-
-                let val= Reflect::get(&data, &JsValue::from_str("lod9_position")).unwrap_or(JsValue::NULL);
-                let val2 = Float32Array::new(&val);
-
-
-                // Log pour vérifier si c'est bien le même buffer
-                let buffer1 = lod9_position_arr.buffer();
-                let buffer2 = val2.buffer();
-                let is_same = buffer1 == buffer2;
-
-                web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(subdivision)).into());
+                web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(lod as usize)).into());
                 scope_clone.post_message(&data).expect("Worker send response");
                 return;
             }

@@ -446,13 +446,52 @@ impl State {
         });
 
 
-        let subdivision: usize = 5;
+
+
+
+
+
+
+
+
+
+
 
         let planet2 = Planet::new();
 
 
         let planet_handle = PlanetHandle::new(planet2);
-        planet_handle.generate_async();
+        planet_handle.generate_async(5);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         // StellarSystem::new(glam::Vec3::ZERO);
 

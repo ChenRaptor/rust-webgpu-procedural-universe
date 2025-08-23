@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use wgpu::util::DeviceExt;
 
-use js_sys::{Array, Float32Array};
+use js_sys::{Array, Float32Array, Uint8Array};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{window, Blob, BlobPropertyBag, MessageEvent, Url, Worker};
 use js_sys::{SharedArrayBuffer, Uint32Array, Reflect, Object};
@@ -38,6 +38,11 @@ fn worker_new(name: &str) -> Worker {
     Worker::new(&url).expect("failed to spawn worker")
 }
 
+// x4
+const LOD_SHARED_ARRAY_BUFFER_POS: [u32; 10] = [144, 504, 1944, 7704, 30744, 122904, 491544, 1966104, 7864344, 31457304];
+const LOD_SHARED_ARRAY_BUFFER_COL: [u32; 10] = [144, 504, 1944, 7704, 30744, 122904, 491544, 1966104, 7864344, 31457304];
+const LOD_SHARED_ARRAY_BUFFER_NOR: [u32; 10] = [144, 504, 1944, 7704, 30744, 122904, 491544, 1966104, 7864344, 31457304];
+const LOD_SHARED_ARRAY_BUFFER_IND: [u32; 10] = [240, 960, 3840, 15360, 61440, 245760, 983040, 3932160, 15728640, 62914560];
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -224,8 +229,7 @@ pub struct Planet {
     kd_tree_max: Option<KDTree3D>,
     pub lod_levels: Vec<PlanetVertex>,
     pub lod_ready: bool,
-    pub lod_levels2: Vec<Sphere>,
-    pub vertex: Vec<Vertex>
+    pub lod_levels2: Vec<Sphere>
 }
 
 impl Planet {
@@ -288,8 +292,7 @@ impl Planet {
             kd_tree_max: None,
             lod_levels: Vec::new(),
             lod_ready: false,
-            lod_levels2: Vec::new(),
-            vertex: Vec::new()
+            lod_levels2: Vec::new()
         }
     }
 
@@ -611,70 +614,30 @@ impl Planet {
 
     pub fn generate_worker(
         planet_rc: &Rc<RefCell<Planet>>,
-        pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>
-        // subdivision: u8
+        pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
+        lod: usize
     ) {
         console_error_panic_hook::set_once();
 
-        // // 7864326 * 4 = 31457304
-        // let lod9_position = SharedArrayBuffer::new(31457304);
-        // let lod9_position: Float32Array = Float32Array::new(&lod9_position);
+        let lod_pos = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_POS[lod]);
+        let lod_col = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_COL[lod]);
+        let lod_nor = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_NOR[lod]);
+        let lod_ind = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_IND[lod]);
 
-        // // 7864326 * 4 = 31457304
-        // let lod9_color = SharedArrayBuffer::new(31457304);
-        // let lod9_color: Float32Array = Float32Array::new(&lod9_color);
-
-        // // 7864326 * 4 = 31457304
-        // let lod9_normal = SharedArrayBuffer::new(31457304);
-        // let lod9_normal: Float32Array = Float32Array::new(&lod9_normal);
-
-        // // 15728640 * 4 = 62914560
-        // let lod9_indice = SharedArrayBuffer::new(62914560);
-        // let lod9_indice: Uint32Array = Uint32Array::new(&lod9_indice);
-
-
-        // 30726 * 4 = 122904
-        let lod9_position = SharedArrayBuffer::new(122904);
-        // let lod9_position_data: Float32Array = Float32Array::new(&lod9_position);
-
-        // 30726 * 4 = 122904
-        let lod9_color = SharedArrayBuffer::new(122904);
-        // let lod9_color_data: Float32Array = Float32Array::new(&lod9_color);
-
-        // 30726 * 4 = 122904
-        let lod9_normal = SharedArrayBuffer::new(122904);
-        // let lod9_normal_data: Float32Array = Float32Array::new(&lod9_normal);
-
-        // 61440 * 4 = 245760
-        let lod9_indice = SharedArrayBuffer::new(245760);
-        // let lod9_indice_data: Uint32Array = Uint32Array::new(&lod9_indice);
-
+        let config: SharedArrayBuffer = SharedArrayBuffer::new(1);
+        let config_data: Uint8Array = Uint8Array::new(&config);
+        config_data.set_index(0, lod as u8);
 
         // Create worker
         let worker = worker_new("worker-geometry");
 
         // Create common object buffer
         let obj = Object::new();
-
-        Reflect::set(&obj, &JsValue::from_str("lod9_position"), &lod9_position).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod9_color"), &lod9_color).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod9_normal"), &lod9_normal).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod9_indice"), &lod9_indice).unwrap();
-
-        // Reflect::set(&obj, &JsValue::from_str("lod8_vertex"), &lod8_vertex).unwrap();
-        // Reflect::set(&obj, &JsValue::from_str("lod8_indice"), &lod8_indice).unwrap();
-
-        // Reflect::set(&obj, &JsValue::from_str("lod7_vertex"), &lod7_vertex).unwrap();
-        // Reflect::set(&obj, &JsValue::from_str("lod7_indice"), &lod7_indice).unwrap();
-
-        // Reflect::set(&obj, &JsValue::from_str("lod6_vertex"), &lod6_vertex).unwrap();
-        // Reflect::set(&obj, &JsValue::from_str("lod6_indice"), &lod6_indice).unwrap();
-
-        // Reflect::set(&obj, &JsValue::from_str("lod5_vertex"), &lod5_vertex).unwrap();
-        // Reflect::set(&obj, &JsValue::from_str("lod5_indice"), &lod5_indice).unwrap();
-
-        // Reflect::set(&obj, &JsValue::from_str("lod4_vertex"), &lod4_vertex).unwrap();
-        // Reflect::set(&obj, &JsValue::from_str("lod4_indice"), &lod4_indice).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod_pos"), &lod_pos).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod_col"), &lod_col).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod_nor"), &lod_nor).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("lod_ind"), &lod_ind).unwrap();
+        Reflect::set(&obj, &JsValue::from_str("config"), &config).unwrap();
 
         let worker_is_ready = Rc::new(RefCell::new(false));
         let worker_is_ready_clone = worker_is_ready.clone();
@@ -694,52 +657,48 @@ impl Planet {
             }
 
             if data.is_object() && !Array::is_array(&data) {
-                if Reflect::has(&data, &JsValue::from_str("lod9_position")).unwrap_or(false) {
+                if Reflect::has(&data, &JsValue::from_str("lod_pos")).unwrap_or(false) {
 
-                    let subdivision: usize = 5; // must match buffer allocation and usage
+                    let lod_pos = Reflect::get(&data, &JsValue::from_str("lod_pos")).unwrap();
+                    let lod_pos = Float32Array::new(&lod_pos);
 
-                    let lod9_position = Reflect::get(&data, &JsValue::from_str("lod9_position")).unwrap();
-                    let lod9_position = Float32Array::new(&lod9_position);
+                    let lod_col = Reflect::get(&data, &JsValue::from_str("lod_col")).unwrap();
+                    let lod_col = Float32Array::new(&lod_col);
 
-                    let lod9_color = Reflect::get(&data, &JsValue::from_str("lod9_color")).unwrap();
-                    let lod9_color = Float32Array::new(&lod9_color);
+                    let lod_nor = Reflect::get(&data, &JsValue::from_str("lod_nor")).unwrap();
+                    let lod_nor = Float32Array::new(&lod_nor);
 
-                    let lod9_normal = Reflect::get(&data, &JsValue::from_str("lod9_normal")).unwrap();
-                    let lod9_normal = Float32Array::new(&lod9_normal);
-
-                    let lod9_indice = Reflect::get(&data, &JsValue::from_str("lod9_indice")).unwrap();
-                    let lod9_indice = Uint32Array::new(&lod9_indice);
+                    let lod_ind = Reflect::get(&data, &JsValue::from_str("lod_ind")).unwrap();
+                    let lod_ind = Uint32Array::new(&lod_ind);
 
 
                     let mut planet_x = planet_clone.borrow_mut();
 
-                    planet_x.lod_levels.resize(subdivision + 1, PlanetVertex::new());
+                    planet_x.lod_levels.resize(lod + 1, PlanetVertex::new());
                     
-                    let mut vec1 = vec![0.0; lod9_position.length() as usize];
-                    lod9_position.copy_to(&mut vec1[..]);
-                    planet_x.lod_levels[subdivision].position = vec1;
+                    let mut vec1 = vec![0.0; lod_pos.length() as usize];
+                    lod_pos.copy_to(&mut vec1[..]);
+                    planet_x.lod_levels[lod].position = vec1;
                     
-                    let mut vec2 = vec![0.0; lod9_color.length() as usize];
-                    lod9_color.copy_to(&mut vec2[..]);
-                    planet_x.lod_levels[subdivision].color = vec2;
+                    let mut vec2 = vec![0.0; lod_col.length() as usize];
+                    lod_col.copy_to(&mut vec2[..]);
+                    planet_x.lod_levels[lod].color = vec2;
                     
-                    let mut vec3 = vec![0.0; lod9_normal.length() as usize];
-                    lod9_normal.copy_to(&mut vec3[..]);
-                    planet_x.lod_levels[subdivision].normal = vec3;
+                    let mut vec3 = vec![0.0; lod_nor.length() as usize];
+                    lod_nor.copy_to(&mut vec3[..]);
+                    planet_x.lod_levels[lod].normal = vec3;
                     
-                    let mut vec4 = vec![0; lod9_indice.length() as usize];
-                    lod9_indice.copy_to(&mut vec4[..]);
-                    planet_x.lod_levels[subdivision].indice = vec4;
+                    let mut vec4 = vec![0; lod_ind.length() as usize];
+                    lod_ind.copy_to(&mut vec4[..]);
+                    planet_x.lod_levels[lod].indice = vec4;
                     
                     // planet_clone.borrow_mut().lod_ready = true;
-                    let pv = &planet_x.lod_levels[subdivision];
+                    let pv = &planet_x.lod_levels[lod];
                     
                     let vertices = Vertex::planet_vertex_to_vertex(pv);
-                    let vertices2 = Vertex::planet_vertex_to_vertex(pv);
-                    planet_x.vertex = vertices;
-                    let indices = planet_x.get_indices(subdivision).to_vec();
+                    let indices = planet_x.get_indices(lod).to_vec();
                     
-                    *pending_clone.borrow_mut() = Some((vertices2, indices));
+                    *pending_clone.borrow_mut() = Some((vertices, indices));
     
                 }
             }
@@ -836,6 +795,9 @@ impl Planet {
         self.lod_levels[subdivision as usize] = planet_vertex;
 
     }
+
+
+
 
     pub fn generate2(&mut self, subdivision: u8) {
         // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
@@ -1095,12 +1057,12 @@ impl PlanetHandle {
         }
     }
 
-    pub fn generate_async(&self) {
+    pub fn generate_async(&self, lod: usize) {
         let planet = self.planet.clone();
         let pending_flag = self.pending.clone();
 
 
-        Planet::generate_worker(&planet, pending_flag);
+        Planet::generate_worker(&planet, pending_flag, lod);
     }
 
     pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
