@@ -36,25 +36,6 @@ const P: [usize; 512] = [
     222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180,
 ];
 
-// // Tableau doublé pour éviter overflow
-// static mut P: [usize; 512] = [0; 512];
-// static INIT: Once = Once::new();
-
-// fn init_permutation() {
-//     unsafe {
-//         for i in 0..256 {
-//             P[i] = PERMUTATION[i];
-//             P[256 + i] = PERMUTATION[i];
-//         }
-//     }
-// }
-
-// fn ensure_initialized() {
-//     INIT.call_once(|| {
-//         init_permutation();
-//     });
-// }
-
 #[inline]
 fn fade(t: f32) -> f32 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)

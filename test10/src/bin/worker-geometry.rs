@@ -26,7 +26,6 @@ fn main() {
                 planet.generate(subdivision as u8);
                 let planet_vertex = &planet.lod_levels[subdivision];
 
-
                 web_sys::console::log_1(&format!("[worker] planet_vertex.indice = {}", planet_vertex.indice.len()).into());
                 web_sys::console::log_1(&format!("[worker] planet_vertex.position = {}", planet_vertex.position.len()).into());
                 web_sys::console::log_1(&format!("[worker] planet_vertex.color = {}", planet_vertex.color.len()).into());
@@ -35,7 +34,6 @@ fn main() {
                 // Position
                 let lod9_position_arr = Float32Array::new(&lod9_position);
                 lod9_position_arr.copy_from(&planet_vertex.position[..]);
-
 
                 // Color
                 let lod9_color = Reflect::get(&data, &JsValue::from_str("lod9_color")).unwrap_or(JsValue::NULL);
@@ -52,6 +50,16 @@ fn main() {
                 let lod9_indice = Reflect::get(&data, &JsValue::from_str("lod9_indice")).unwrap_or(JsValue::NULL);
                 let lod9_indice_arr = Uint32Array::new(&lod9_indice);
                 lod9_indice_arr.copy_from(&planet_vertex.indice[..]);
+
+
+                let val= Reflect::get(&data, &JsValue::from_str("lod9_position")).unwrap_or(JsValue::NULL);
+                let val2 = Float32Array::new(&val);
+
+
+                // Log pour vérifier si c'est bien le même buffer
+                let buffer1 = lod9_position_arr.buffer();
+                let buffer2 = val2.buffer();
+                let is_same = buffer1 == buffer2;
 
                 web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(subdivision)).into());
                 scope_clone.post_message(&data).expect("Worker send response");

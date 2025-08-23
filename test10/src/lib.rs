@@ -118,8 +118,8 @@ impl InstanceRaw {
 
 
 
-const NUM_INSTANCES_PER_ROW: u32 = 1;
-const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
+// const NUM_INSTANCES_PER_ROW: u32 = 1;
+// const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
 
 
 
@@ -230,9 +230,6 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
     // #[allow(dead_code)]
     // diffuse_texture: texture::Texture,
     // diffuse_bind_group: wgpu::BindGroup,
@@ -451,138 +448,31 @@ impl State {
 
         let subdivision: usize = 5;
 
-
-
-
-
-        let mut planet3 = Planet::new();
-        planet3.generate(subdivision as u8);
-
-        let pv = &planet3.lod_levels[subdivision];
-        let vertices = Vertex::planet_vertex_to_vertex(pv);
-
-        log::info!("vertices: {}", vertices.len());
-
-        log::info!("-vertices: {}", vertices[0].position[0]);
-        log::info!("-vertices: {}", vertices[0].position[1]);
-        log::info!("-vertices: {}", vertices[0].position[2]);
-        log::info!("-vertices: {}", vertices[1].position[0]);
-        log::info!("-indices: {}", planet3.get_indices(subdivision)[0]);
-        log::info!("-indices: {}", planet3.get_indices(subdivision)[1]);
-        log::info!("-indices: {}", planet3.get_indices(subdivision)[2]);
-        log::info!("-indices: {}", planet3.get_indices(subdivision)[3]);
-
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(planet3.get_indices(subdivision)),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let num_indices = planet3.get_index_count(subdivision) as u32;
-
-        log::info!("indices: {}", num_indices);
-
-
-
-
-
-
         let planet2 = Planet::new();
 
 
         let planet_handle = PlanetHandle::new(planet2);
         planet_handle.generate_async();
 
-
-
-
-
-
-
-
-
-
-        // let mut planet = Planet::new();
-        // planet.generate2(subdivision as u8);
-
-
-        // let vertices: Vec<Vertex> = (0..planet.get_vertex_count2(subdivision))
-        //     .map(|i| Vertex::from_planet_buffer(planet.get_vertices2(subdivision), i))
-        //     .collect();
-
-        // log::info!("vertices: {}", vertices.len());
-
-        // log::info!("-vertices: {}", vertices[0].position[0]);
-        // log::info!("-vertices: {}", vertices[0].position[1]);
-        // log::info!("-vertices: {}", vertices[0].position[2]);
-        // log::info!("-vertices: {}", vertices[1].position[0]);
-        // log::info!("-indices: {}", planet.get_indices2(subdivision)[0]);
-        // log::info!("-indices: {}", planet.get_indices2(subdivision)[1]);
-        // log::info!("-indices: {}", planet.get_indices2(subdivision)[2]);
-        // log::info!("-indices: {}", planet.get_indices2(subdivision)[3]);
-        
-        // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Vertex Buffer"),
-        //     contents: bytemuck::cast_slice(&vertices),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-        
-        // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Index Buffer"),
-        //     contents: bytemuck::cast_slice(planet.get_indices2(subdivision)),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
-        
-        // let num_indices = planet.get_index_count2(subdivision) as u32;
-        // log::info!("indices: {}", num_indices);
-        
-
-
-
-        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let position = glam::Vec3::new(x as f32, 0.0, z as f32) - INSTANCE_DISPLACEMENT;
-
-                let rotation = if position.length_squared() < f32::EPSILON {
-                    // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                    // as Quaternions can affect scale if they're not created correctly
-                    glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
-                } else {
-                    glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
-                };
-
-                Instance {
-                    position, rotation,
-                }
-            })
-        }).collect::<Vec<_>>();
-
         // StellarSystem::new(glam::Vec3::ZERO);
 
-        // let instances: Vec<Instance> = {
-        //         let position = glam::Vec3::new(0.0, 0.0, 0.0);
+        let instances: Vec<Instance> = {
+            let position = glam::Vec3::new(0.0, 0.0, 0.0);
 
-        //         let rotation = if position.length_squared() < f32::EPSILON {
-        //             // this is needed so an object at (0, 0, 0) won't get scaled to zero
-        //             // as Quaternions can affect scale if they're not created correctly
-        //             glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
-        //         } else {
-        //             glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
-        //         };
-        //         vec![
-        //             Instance {
-        //                 position,
-        //                 rotation,
-        //             }
-        //         ]
-        //     };
+            let rotation = if position.length_squared() < f32::EPSILON {
+                // this is needed so an object at (0, 0, 0) won't get scaled to zero
+                // as Quaternions can affect scale if they're not created correctly
+                glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
+            } else {
+                glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
+            };
+            vec![
+                Instance {
+                    position,
+                    rotation,
+                }
+            ]
+        };
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(
@@ -601,9 +491,6 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
             // diffuse_texture,
             // diffuse_bind_group,
             camera,
@@ -619,7 +506,6 @@ impl State {
             instances,
             instance_buffer,
             planet_handle,
-            // planet: planet2,
         })
     }
 
@@ -715,147 +601,15 @@ impl State {
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
 
 
-            // if self.planet_handle.is_ready()
-            // {
-            //     // log::info!("Framed!!");
-            //     if let (Some(vb), Some(ib)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer) {
-            //         // log::info!("Framed2!!");
-            //         // let vb = self.planet_handle.vertex_buffer.clone();
-            //         // let ib = self.planet_handle.index_buffer.clone();
-
-            //         log::info!("size_vb:{}",vb.size());
-            //         log::info!("size_ib:{}",ib.size());
-            //         log::info!("size_ibb:{}",self.instance_buffer.size());
-
-
-            //         render_pass.set_vertex_buffer(0, vb.slice(..));
-            //         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            //         // You may need to store num_indices in planet_handle or get it from elsewhere
-            //         render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-            //         // render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
-            //         log::info!("{}", self.instances.len());
-            //         log::info!("instances_2: {}", self.instances.len());
-            //         log::info!("num_indice_2: {}", self.num_indices);
-    
-
-            //         render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..self.instances.len() as _);
-            //     }
-            // }
-
-            // if (self.planet_handle.is_ready())
-            // {
-            //     let (Some(vb), Some(ib)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer);
-
-
-                
-            //     render_pass.set_vertex_buffer(0, Some(&self.planet_handle.vertex_buffer).slice(..));
-            //     render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-            //     render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            //     // render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
-            //     render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
-            // }
-
-            if self.rotation_angle > 1.0
+            if self.planet_handle.is_ready()
             {
-
-                let planet = self.planet_handle.planet.clone();
-
-                let val = &planet.borrow().vertex;
-                
-                self.vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&val),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-
-                self.index_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Index Buffer"),
-                    contents: bytemuck::cast_slice(planet.borrow().get_indices(5)),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-
-                let num_indices = planet.borrow().get_index_count(5) as u32;
-
-                
-                render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-                render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-
-                log::info!("size_vb2:{}",self.vertex_buffer.size());
-                log::info!("size_ib2:{}",self.index_buffer.size());
-                log::info!("size_ibb2:{}",self.instance_buffer.size());
-
-
-                // You may need to store num_indices in planet_handle or get it from elsewhere
-                render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                // render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
-                // log::info!("instances_1: {}", self.instances.len());
-                // log::info!("num_indice_1: {}", self.num_indices);
-    
-                render_pass.draw_indexed(0..num_indices, 0, 0..self.instances.len() as _);
+                if let (Some(vb), Some(ib)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer) {
+                    render_pass.set_vertex_buffer(0, vb.slice(..));
+                    render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+                    render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..self.instances.len() as _);
+                }
             }
-
-            if self.rotation_angle > 10.0
-            {
-
-        let subdivision: usize = 5;
-
-
-
-
-
-                let mut planet3 = Planet::new();
-                planet3.generate(subdivision as u8);
-
-                let pv = &planet3.lod_levels[subdivision];
-                let vertices = Vertex::planet_vertex_to_vertex(pv);
-
-                // log::info!("vertices: {}", vertices.len());
-
-                // log::info!("-vertices: {}", vertices[0].position[0]);
-                // log::info!("-vertices: {}", vertices[0].position[1]);
-                // log::info!("-vertices: {}", vertices[0].position[2]);
-                // log::info!("-vertices: {}", vertices[1].position[0]);
-                // log::info!("-indices: {}", planet3.get_indices(subdivision)[0]);
-                // log::info!("-indices: {}", planet3.get_indices(subdivision)[1]);
-                // log::info!("-indices: {}", planet3.get_indices(subdivision)[2]);
-                // log::info!("-indices: {}", planet3.get_indices(subdivision)[3]);
-
-
-                let vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-                
-                let index_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Index Buffer"),
-                    contents: bytemuck::cast_slice(planet3.get_indices(subdivision)),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
-
-                let num_indices = planet3.get_index_count(subdivision) as u32;
-
-                log::info!("indices: {}", num_indices);
-
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-
-                // log::info!("size_vb2:{}",self.vertex_buffer.size());
-                // log::info!("size_ib2:{}",self.index_buffer.size());
-                // log::info!("size_ibb2:{}",self.instance_buffer.size());
-
-
-                // You may need to store num_indices in planet_handle or get it from elsewhere
-                render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                // render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
-                // log::info!("instances_1: {}", self.instances.len());
-                // log::info!("num_indice_1: {}", self.num_indices);
-    
-                render_pass.draw_indexed(0..num_indices, 0, 0..self.instances.len() as _);
-
-            }
-
-
         }
 
         self.queue.submit(iter::once(encoder.finish()));

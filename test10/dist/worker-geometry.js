@@ -243,6 +243,10 @@ let wasm_bindgen;
             const ret = arg0.buffer;
             return ret;
         };
+        imports.wbg.__wbg_buffer_94ae5ab638195fbd = function(arg0) {
+            const ret = arg0.buffer;
+            return ret;
+        };
         imports.wbg.__wbg_call_672a4d21634d4a24 = function() { return handleError(function (arg0, arg1) {
             const ret = arg0.call(arg1);
             return ret;
@@ -266,6 +270,10 @@ let wasm_bindgen;
             const ret = Reflect.get(arg0, arg1);
             return ret;
         }, arguments) };
+        imports.wbg.__wbg_is_c7481c65e7e5df9e = function(arg0, arg1) {
+            const ret = Object.is(arg0, arg1);
+            return ret;
+        };
         imports.wbg.__wbg_length_3b4f022188ae8db6 = function(arg0) {
             const ret = arg0.length;
             return ret;
@@ -340,7 +348,7 @@ let wasm_bindgen;
             const ret = typeof window === 'undefined' ? null : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         };
-        imports.wbg.__wbindgen_closure_wrapper51 = function(arg0, arg1, arg2) {
+        imports.wbg.__wbindgen_closure_wrapper54 = function(arg0, arg1, arg2) {
             const ret = makeClosure(arg0, arg1, 9, __wbg_adapter_18);
             return ret;
         };

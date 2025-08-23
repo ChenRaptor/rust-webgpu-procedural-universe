@@ -635,19 +635,19 @@ impl Planet {
 
         // 30726 * 4 = 122904
         let lod9_position = SharedArrayBuffer::new(122904);
-        let lod9_position: Float32Array = Float32Array::new(&lod9_position);
+        // let lod9_position_data: Float32Array = Float32Array::new(&lod9_position);
 
         // 30726 * 4 = 122904
         let lod9_color = SharedArrayBuffer::new(122904);
-        let lod9_color: Float32Array = Float32Array::new(&lod9_color);
+        // let lod9_color_data: Float32Array = Float32Array::new(&lod9_color);
 
         // 30726 * 4 = 122904
         let lod9_normal = SharedArrayBuffer::new(122904);
-        let lod9_normal: Float32Array = Float32Array::new(&lod9_normal);
+        // let lod9_normal_data: Float32Array = Float32Array::new(&lod9_normal);
 
         // 61440 * 4 = 245760
         let lod9_indice = SharedArrayBuffer::new(245760);
-        let lod9_indice: Uint32Array = Uint32Array::new(&lod9_indice);
+        // let lod9_indice_data: Uint32Array = Uint32Array::new(&lod9_indice);
 
 
         // Create worker
@@ -711,35 +711,36 @@ impl Planet {
                     let lod9_indice = Uint32Array::new(&lod9_indice);
 
 
-                    let mut planetX = planet_clone.borrow_mut();
+                    let mut planet_x = planet_clone.borrow_mut();
 
-                    planetX.lod_levels.resize(subdivision + 1, PlanetVertex::new());
-
+                    planet_x.lod_levels.resize(subdivision + 1, PlanetVertex::new());
+                    
                     let mut vec1 = vec![0.0; lod9_position.length() as usize];
                     lod9_position.copy_to(&mut vec1[..]);
-                    planetX.lod_levels[subdivision].position = vec1;
-
+                    planet_x.lod_levels[subdivision].position = vec1;
+                    
                     let mut vec2 = vec![0.0; lod9_color.length() as usize];
                     lod9_color.copy_to(&mut vec2[..]);
-                    planetX.lod_levels[subdivision].color = vec2;
-
+                    planet_x.lod_levels[subdivision].color = vec2;
+                    
                     let mut vec3 = vec![0.0; lod9_normal.length() as usize];
                     lod9_normal.copy_to(&mut vec3[..]);
-                    planetX.lod_levels[subdivision].normal = vec3;
-
+                    planet_x.lod_levels[subdivision].normal = vec3;
+                    
                     let mut vec4 = vec![0; lod9_indice.length() as usize];
                     lod9_indice.copy_to(&mut vec4[..]);
-                    planetX.lod_levels[subdivision].indice = vec4;
-
+                    planet_x.lod_levels[subdivision].indice = vec4;
+                    
                     // planet_clone.borrow_mut().lod_ready = true;
-                    let pv = &planetX.lod_levels[subdivision];
-
+                    let pv = &planet_x.lod_levels[subdivision];
+                    
                     let vertices = Vertex::planet_vertex_to_vertex(pv);
                     let vertices2 = Vertex::planet_vertex_to_vertex(pv);
-                    planetX.vertex = vertices;
-                    let indices = planetX.get_indices(subdivision).to_vec();
-
+                    planet_x.vertex = vertices;
+                    let indices = planet_x.get_indices(subdivision).to_vec();
+                    
                     *pending_clone.borrow_mut() = Some((vertices2, indices));
+    
                 }
             }
         }) as Box<dyn FnMut(MessageEvent)>);
@@ -1026,65 +1027,6 @@ impl Planet {
         (final_vertex, final_color)
     }
 
-    // // Fonction helper pour calculer les vertices avec Perlin noise
-    // fn compute_vertices(&mut self, v: Vec3, index: usize) {
-    //     // Calculer la position finale avec le rayon
-
-    //     let continent_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.continent_octaves, self.continent_persistence, self.continent_noise_scale);
-    //     let big_moutain_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.big_mountain_octaves, self.big_mountain_persistence, self.big_mountain_noise_scale);
-    //     let moutain_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.mountain_octaves, self.mountain_persistence, self.mountain_noise_scale);
-    //     let biome_noise : f32 = fbm_perlin_noise(v.x, v.y, v.z, self.biome_octaves, self.biome_persistence, self.biome_noise_scale);
-
-    //     let latitude: f32 = v.y.acos() / PI;
-    //     // let distance_to_equator: f32 = (latitude - 0.5).abs();
-    //     let continent_factor: f32 = (moutain_noise * big_moutain_noise * 0.6) + (continent_noise * 0.4);
-    //     let weight_continent: f32 = smoothstep(0.0, 0.1, continent_noise);
-    //     let weight_big_mountain: f32 = smoothstep(0.0, 0.2, big_moutain_noise);
-
-    //     let mut deformed_radius: f32 = self.radius + (continent_factor * self.height_amplitude);
-    //     deformed_radius += weight_big_mountain * weight_continent * big_moutain_noise * self.height_amplitude / 4.0;
-
-    //     let under_water: bool = deformed_radius <= self.level_sea;
-    //     if under_water {
-    //         deformed_radius = self.level_sea;
-    //     }
-
-    //     self.lod_max_vertices[index] = deformed_radius * v;
-
-    //     if under_water {
-    //         // équivalent du commentaire "Equator handler"
-    //         // _lod_max_colors[i] = if on_equator {
-    //         //     Vec3::new(1.0, 0.0, 0.0)
-    //         // } else {
-    //         //     get_color_from_noise(continent_factor, &ocean_palette)
-    //         // };
-
-    //         self.lod_max_colors[index] = get_color_from_noise(continent_factor, &self.biome_palettes[0]);
-    //         return;
-    //     }
-
-    //     let altitude_normalized: f32 = (deformed_radius - self.radius) / self.height_amplitude;
-    //     let temperature: f32 = compute_temperature(latitude, altitude_normalized, v);
-    //     let humidity: f32 = compute_humidity(v);
-
-    //     let biome_idx = get_biome_index(temperature, humidity, deformed_radius, self.level_sea);
-    //     let biome_color: Vec3 = get_color_from_noise(biome_noise, &self.biome_palettes[biome_idx]);
-    //     let factor: f32 = moutain_noise * big_moutain_noise;
-    //     let mountain_color: Vec3 = get_color_from_noise(factor, &self.biome_palettes[4]);
-    //     let abs_factor = (20.0 * factor).tanh().abs();
-    //     let inv_mix = 0.5 - abs_factor / 2.0;
-    //     let mix     = 0.5 + abs_factor / 2.0;
-
-    //     let final_color: Vec3 = Vec3::new(
-    //         biome_color.x * inv_mix + mountain_color.x * mix,
-    //         biome_color.y * inv_mix + mountain_color.y * mix,
-    //         biome_color.z * inv_mix + mountain_color.z * mix
-    //     );
-
-    //     self.lod_max_colors[index] = final_color;
-    // }
-
-    // Méthodes publiques pour accéder aux données de rendu
     pub fn get_positions(&self, lod_level: usize) -> &[f32] {
         &self.lod_levels[lod_level].position
     }
@@ -1132,55 +1074,6 @@ impl Planet {
 }
 
 
-// pub struct PlanetHandle {
-//     planet: Rc<RefCell<Planet>>,
-//     is_ready: Rc<RefCell<bool>>,
-// }
-
-// impl PlanetHandle {
-//     pub fn new(planet: Planet) -> Self {
-//         Self {
-//             planet: Rc::new(RefCell::new(planet)),
-//             is_ready: Rc::new(RefCell::new(false)),
-//         }
-//     }
-
-//     pub fn generate_async(&self, device: &wgpu::Device,subdivision: u8) {
-//         let planet = self.planet.clone();
-//         let ready_flag = self.is_ready.clone();
-
-//         spawn_local(async move {
-//             planet.borrow_mut().generate(subdivision).await;
-            
-//             let vertices: Vec<Vertex> = (0..planet.borrow_mut().get_vertex_count(subdivision as usize))
-//             .map(|i| Vertex::from_planet_buffer(planet.borrow_mut().get_vertices(subdivision as usize), i))
-//             .collect();
-
-//             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-//                 label: Some("Vertex Buffer"),
-//                 contents: bytemuck::cast_slice(&vertices),
-//                 usage: wgpu::BufferUsages::VERTEX,
-//             });
-
-//             let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-//                 label: Some("Index Buffer"),
-//                 contents: bytemuck::cast_slice(planet.borrow_mut().get_indices(subdivision as usize)),
-//                 usage: wgpu::BufferUsages::INDEX,
-//             });
-
-//             let num_indices = planet.borrow_mut().get_index_count(subdivision as usize) as u32;
-//             *ready_flag.borrow_mut() = true; // ✅ on marque "prêt"
-//         });
-//     }
-
-//     pub fn is_ready(&self) -> bool {
-//         *self.is_ready.borrow()
-//     }
-// }
-
-
-
-
 pub struct PlanetHandle {
     pub planet: Rc<RefCell<Planet>>,
     is_ready: Rc<RefCell<bool>>,
@@ -1213,27 +1106,6 @@ impl PlanetHandle {
     pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
 
         if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
-
-            // log::info!("nb_vertices: {}", vertices.len());
-            // log::info!("nb_indices: {}", indices.len());
-
-
-            // let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some("Vertex Buffer"),
-            //     contents: bytemuck::cast_slice(&vertices),
-            //     usage: wgpu::BufferUsages::VERTEX,
-            // });
-            
-            // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //     label: Some("Index Buffer"),
-            //     contents: bytemuck::cast_slice(planet),
-            //     usage: wgpu::BufferUsages::INDEX,
-            // });
-
-            // let num_indices = planet3.get_index_count(subdivision) as u32;
-
-            // log::info!("indices: {}", num_indices);
-
             
             self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
