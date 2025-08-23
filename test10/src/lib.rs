@@ -38,7 +38,7 @@ fn time_diff_ms(start: TimeStamp, end: TimeStamp) -> f64 {
     end.duration_since(start).as_millis() as f64
 }
 
-mod geometry {
+pub mod geometry {
     pub mod icosphere;
     pub mod kdtree3d;
     pub mod planet;
@@ -583,7 +583,7 @@ impl State {
         if !self.is_surface_configured {
             return Ok(());
         }
-        self.planet_handle.upload_if_ready(&self.device);
+        // self.planet_handle.upload_if_ready(&self.device);
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -624,17 +624,17 @@ impl State {
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
 
 
-            if self.planet_handle.is_ready()
-            {
-                if let (Some(vb), Some(ib)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer) {
-                    render_pass.set_vertex_buffer(0, vb.slice(..));
-                    render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-                    // You may need to store num_indices in planet_handle or get it from elsewhere
-                    render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    // render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
-                    render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..self.instances.len() as _);
-                }
-            }
+            // if self.planet_handle.is_ready()
+            // {
+            //     if let (Some(vb), Some(ib)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer) {
+            //         render_pass.set_vertex_buffer(0, vb.slice(..));
+            //         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            //         // You may need to store num_indices in planet_handle or get it from elsewhere
+            //         render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+            //         // render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            //         render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..self.instances.len() as _);
+            //     }
+            // }
 
             // if (self.planet_handle.is_ready())
             // {

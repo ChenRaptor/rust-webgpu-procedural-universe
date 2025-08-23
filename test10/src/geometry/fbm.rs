@@ -1,7 +1,7 @@
-use std::sync::Once;
+// use std::sync::Once;
 
 // Table de permutations (256 éléments)
-const PERMUTATION: [usize; 512] = [
+const P: [usize; 512] = [
     151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225,
     140, 36, 103, 30, 69, 142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148,
     247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32,
@@ -36,24 +36,24 @@ const PERMUTATION: [usize; 512] = [
     222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66, 215, 61, 156, 180,
 ];
 
-// Tableau doublé pour éviter overflow
-static mut P: [usize; 512] = [0; 512];
-static INIT: Once = Once::new();
+// // Tableau doublé pour éviter overflow
+// static mut P: [usize; 512] = [0; 512];
+// static INIT: Once = Once::new();
 
-fn init_permutation() {
-    unsafe {
-        for i in 0..256 {
-            P[i] = PERMUTATION[i];
-            P[256 + i] = PERMUTATION[i];
-        }
-    }
-}
+// fn init_permutation() {
+//     unsafe {
+//         for i in 0..256 {
+//             P[i] = PERMUTATION[i];
+//             P[256 + i] = PERMUTATION[i];
+//         }
+//     }
+// }
 
-fn ensure_initialized() {
-    INIT.call_once(|| {
-        init_permutation();
-    });
-}
+// fn ensure_initialized() {
+//     INIT.call_once(|| {
+//         init_permutation();
+//     });
+// }
 
 #[inline]
 fn fade(t: f32) -> f32 {
@@ -85,7 +85,7 @@ fn grad(hash: usize, x: f32, y: f32, z: f32) -> f32 {
 
 /// Fonction de bruit de Perlin 3D
 pub fn perlin_noise_3d(x: f32, y: f32, z: f32) -> f32 {
-    ensure_initialized();
+    // ensure_initialized();
     
     let x_int = (x.floor() as i32 & 255) as usize;
     let y_int = (y.floor() as i32 & 255) as usize;

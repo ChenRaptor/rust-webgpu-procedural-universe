@@ -2,6 +2,8 @@ use js_sys::{Array, Uint32Array, Reflect};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
 use wasm_bindgen::JsValue;
+// use crate::geometry::fbm::fbm_perlin_noise;
+use webworker_example::geometry::fbm::fbm_perlin_noise;
 
 fn main() {
     // Affiche erreur de rust dans la console JS
@@ -18,10 +20,13 @@ fn main() {
         if let Ok(sab) = Reflect::get(&data, &JsValue::from_str("sab")) {
             if !sab.is_undefined() {
                 let arr = Uint32Array::new(&sab);
-                let value = arr.get_index(0);
+                // let value = arr.get_index(0);
+
+                let value = fbm_perlin_noise(0.24,0.53,0.59, 4, 0.7, 2.0);
+
                 web_sys::console::log_1(&format!("[worker] Shared value[0] = {}", value).into());
                 // Modifie la valeur pour test
-                arr.set_index(1, value + 1);
+                // arr.set_index(1, value + 1);
                 return;
             }
         }

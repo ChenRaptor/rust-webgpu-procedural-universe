@@ -230,9 +230,22 @@ fn compute_humidity(v: Vec3) -> f32 {
 }
 
 #[derive(Clone)]
-pub struct Sphere {
-    pub sphere_vertices: Vec<f32>,
-    pub sphere_indices: Vec<u32>,
+pub struct PlanetVertex {
+    pub position: Vec<f32>,
+    pub color: Vec<f32>,
+    pub normal: Vec<f32>,
+    pub indice: Vec<u32>
+}
+
+impl PlanetVertex {
+    pub fn new() -> Self {
+        PlanetVertex {
+            position: Vec::new(),
+            color: Vec::new(),
+            normal:Vec::new(),
+            indice:Vec::new()
+        }
+    }
 }
 
 pub struct Planet {
@@ -259,7 +272,7 @@ pub struct Planet {
     lod_max_vertices: Vec<Vec3>,
     lod_max_colors: Vec<Vec3>,
     // kd_tree_max: Option<KDTree3D>,
-    pub lod_levels: Vec<Sphere>,
+    pub lod_levels: Vec<PlanetVertex>,
 }
 
 impl Planet {
@@ -767,6 +780,95 @@ impl Planet {
         onmessage.forget();
     }
 
+
+
+    pub async fn generate(&mut self, subdivision: u8) {
+        let mut solid = IcoSphere::new();
+        solid.generate(subdivision);
+
+        let vertex_count = solid.vertices.len();
+        let indice_count = solid.indices.len();
+        let vertices = &solid.vertices;
+        
+        let mut planet_vertex = PlanetVertex::new();
+        let position = &mut planet_vertex.position;
+        let color = &mut planet_vertex.color;
+        let vnormal = &mut planet_vertex.normal;
+        let indice = &mut planet_vertex.indice;
+        
+        position.resize(3 * vertex_count, 0.0);
+        color.resize(3 * vertex_count, 0.0);
+        vnormal.resize(3 * vertex_count, 0.0);
+        indice.reserve(indice_count);
+
+        // Remplir les vertices
+        for (i, vertex) in vertices.iter().enumerate() {
+
+            let (v, c) = self.compute_vertex_data(*vertex);
+
+            // Position
+            position[3 * i] = v.x;
+            position[3 * i + 1] = v.x;
+            position[3 * i + 2] = v.x;
+
+            // Couleur
+            color[3 * i] = c.x;
+            color[3 * i + 1] = c.y;
+            color[3 * i + 2] = c.z;
+        }
+
+        // Indices
+        indice.extend_from_slice(&solid.indices);
+
+        // Calcul des normales par accumulation
+        let mut normals = vec![Vec3::ZERO; vertex_count];
+        for triangle in indice.chunks(3) {
+            let i0 = triangle[0] as usize;
+            let i1 = triangle[1] as usize;
+            let i2 = triangle[2] as usize;
+
+            let v0 = Vec3::new(
+                position[3 * i0],
+                position[3 * i0 + 1],
+                position[3 * i0 + 2],
+            );
+            let v1 = Vec3::new(
+                position[3 * i1],
+                position[3 * i1 + 1],
+                position[3 * i1 + 2],
+            );
+            let v2 = Vec3::new(
+                position[3 * i2],
+                position[3 * i2 + 1],
+                position[3 * i2 + 2],
+            );
+
+            let edge1 = v1 - v0;
+            let edge2 = v2 - v0;
+            let normal = edge1.cross(edge2).normalize();
+
+            normals[i0] += normal;
+            normals[i1] += normal;
+            normals[i2] += normal;
+        }
+
+        // Normaliser et assigner les normales
+        for (i, normal) in normals.iter().enumerate() {
+            let n = normal.normalize();
+            vnormal[3 * i] = n.x;
+            vnormal[3 * i + 1] = n.y;
+            vnormal[3 * i + 2] = n.z;
+        }
+
+        // Sauvegarder dans le niveau LOD
+        // self.lod_levels[subdivision as usize].sphere_vertices = self.sphere_vertices.clone();
+        // self.lod_levels[subdivision as usize].sphere_indices = self.sphere_indices.clone();
+
+        self.lod_levels.resize(subdivision as usize + 1, PlanetVertex::new());
+        self.lod_levels[subdivision as usize] = planet_vertex;
+
+    }
+
     // pub async fn generate(&mut self, subdivision: u8) {
     //     // Équivalent de static std::unique_ptr<KDTree3D> kdTreeMax;
     //     static mut KD_TREE_MAX: Option<KDTree3D> = None;
@@ -1016,16 +1118,28 @@ impl Planet {
     // }
 
     // Méthodes publiques pour accéder aux données de rendu
-    pub fn get_vertices(&self, lod_level: usize) -> &[f32] {
-        &self.lod_levels[lod_level].sphere_vertices
+    pub fn get_positions(&self, lod_level: usize) -> &[f32] {
+        &self.lod_levels[lod_level].position
     }
+
+
+    pub fn get_colors(&self, lod_level: usize) -> &[f32] {
+        &self.lod_levels[lod_level].color
+    }
+
+
+    pub fn get_normals(&self, lod_level: usize) -> &[f32] {
+        &self.lod_levels[lod_level].normal
+    }
+
 
     pub fn get_indices(&self, lod_level: usize) -> &[u32] {
-        &self.lod_levels[lod_level].sphere_indices
+        &self.lod_levels[lod_level].indice
     }
 
+    
     pub fn get_vertex_count(&self, lod_level: usize) -> usize {
-        self.lod_levels[lod_level].sphere_vertices.len() / 9
+        self.lod_levels[lod_level].position.len() / 3
     }
 
     // pub fn get_index_count(&self, lod_level: usize) -> usize {
@@ -1104,46 +1218,46 @@ impl PlanetHandle {
         }
     }
 
-    pub fn generate_async(&self, subdivision: u8) {
-        let planet = self.planet.clone();
-        let ready_flag = self.is_ready.clone();
-        let pending = self.pending.clone();
+    // pub fn generate_async(&self, subdivision: u8) {
+    //     let planet = self.planet.clone();
+    //     let ready_flag = self.is_ready.clone();
+    //     let pending = self.pending.clone();
 
-        spawn_local(async move {
-            planet.borrow_mut().generate(subdivision).await;
+    //     spawn_local(async move {
+    //         planet.borrow_mut().generate(subdivision).await;
 
-            let vertices: Vec<Vertex> = (0..planet.borrow().get_vertex_count(subdivision as usize))
-                .map(|i| Vertex::from_planet_buffer(
-                    planet.borrow().get_vertices(subdivision as usize), i
-                ))
-                .collect();
+    //         let vertices: Vec<Vertex> = (0..planet.borrow().get_vertex_count(subdivision as usize))
+    //             .map(|i| Vertex::from_planet_buffer(
+    //                 planet.borrow().get_vertices(subdivision as usize), i
+    //             ))
+    //             .collect();
 
-            let indices: Vec<u32> = planet.borrow().get_indices(subdivision as usize).to_vec();
+    //         let indices: Vec<u32> = planet.borrow().get_indices(subdivision as usize).to_vec();
 
-            *pending.borrow_mut() = Some((vertices, indices));
-            *ready_flag.borrow_mut() = true;
-            log::info!("Planet is ready");
-        });
-    }
+    //         *pending.borrow_mut() = Some((vertices, indices));
+    //         *ready_flag.borrow_mut() = true;
+    //         log::info!("Planet is ready");
+    //     });
+    // }
 
-    pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
-        if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
-            self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }));
+    // pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
+    //     if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
+    //         self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    //             label: Some("Vertex Buffer"),
+    //             contents: bytemuck::cast_slice(&vertices),
+    //             usage: wgpu::BufferUsages::VERTEX,
+    //         }));
 
-            self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }));
+    //         self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    //             label: Some("Index Buffer"),
+    //             contents: bytemuck::cast_slice(&indices),
+    //             usage: wgpu::BufferUsages::INDEX,
+    //         }));
 
-            self.num_indices = indices.len() as u32;
-            log::info!("Planet is uploaded");
-        }
-    }
+    //         self.num_indices = indices.len() as u32;
+    //         log::info!("Planet is uploaded");
+    //     }
+    // }
 
     pub fn is_ready(&self) -> bool {
         *self.is_ready.borrow()

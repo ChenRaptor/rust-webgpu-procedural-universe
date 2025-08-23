@@ -4,7 +4,7 @@ use std::collections::HashMap;
 pub struct IcoSphere {
 	pub vertices: Vec<Vec3>,
 	pub indices: Vec<u32>,
-	pub subdivisions: u32,
+	pub subdivisions: u8,
 	middle_point_cache: HashMap<u64, u32>,
 }
 
@@ -84,7 +84,7 @@ impl IcoSphere {
 		self.indices = new_indices;
 	}
 
-	pub fn generate(&mut self, subdivisions: u32) {
+	pub fn generate(&mut self, subdivisions: u8) {
 		self.init_icosahedron();
 		for _ in 0..subdivisions {
 			self.subdivide_triangles();
