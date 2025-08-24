@@ -49,8 +49,8 @@ mod camera;
 mod stellar_system;
 
 // use geometry::icosphere::IcoSphere;
-use geometry::planet::{Planet, PlanetHandle, PlanetVertex};
-use camera::{Camera, CameraUniform, CameraController};
+use geometry::planet::{Planet, PlanetHandle, PlanetVertex, PlanetInstance};
+use camera::{Camera, CameraUniform, CameraController, Plane};
 // use stellar_system::StellarSystem;
 
 #[cfg(target_arch = "wasm32")]
@@ -203,6 +203,68 @@ impl Vertex {
     }
 
 }
+
+// Use the public constructor or associated function for PlanetInstance
+fn make_instance_vec() -> Vec<PlanetHandle> {
+    vec![
+        PlanetHandle::new(
+            Planet::new(),
+            glam::Vec3::ZERO,
+            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+        ),
+        PlanetHandle::new(
+            Planet::new(),
+            glam::Vec3::new(13.0, 24.0, 0.0),
+            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+        ),
+        PlanetHandle::new(
+            Planet::new(),
+            glam::Vec3::new(13.0, -24.0, 0.0),
+            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+        )
+    ]
+}
+
+struct Manager {
+    pub planet_instances: Vec<PlanetHandle>,
+    pub planes: [Plane; 6]
+}
+
+impl Manager {
+
+    pub fn new(planes: [Plane; 6]) -> Self {
+        Manager {
+            planet_instances: make_instance_vec(),
+            planes
+        }
+    }
+
+    fn check_visibility_cluster(&mut self)
+    {
+        for planet_instance in &mut self.planet_instances {
+            let mut visible = true;
+            for plane in &self.planes {
+                if plane.normal.dot(planet_instance.instance.position) + plane.d < -1.5 {
+                    visible = false;
+                    break;
+                }
+            }
+            planet_instance.is_visible = visible;
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -491,6 +553,14 @@ impl State {
     }
 
     fn update(&mut self) {
+
+        self.camera_uniform.get_view_proj();
+        let mat4 = CameraUniform::mat4_from_array(self.camera_uniform.get_view_proj());
+        let planes = Camera::extract_frustum_planes(&mat4);
+        let mut manager = Manager::new(planes);
+        manager.check_visibility_cluster();
+        
+
         self.rotation_angle += 0.01; // vitesse de rotation
         self.model_uniform.update_rotation(self.rotation_angle);
         self.queue.write_buffer(

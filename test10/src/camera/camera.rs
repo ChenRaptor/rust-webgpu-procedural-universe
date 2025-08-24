@@ -1,3 +1,4 @@
+
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: glam::Mat4 = glam::Mat4::from_cols(
     glam::Vec4::new(1.0, 0.0, 0.0, 0.0),
@@ -6,9 +7,9 @@ pub const OPENGL_TO_WGPU_MATRIX: glam::Mat4 = glam::Mat4::from_cols(
     glam::Vec4::new(0.0, 0.0, 0.5, 1.0),
 );
 
-struct Plane {
-    normal: glam::Vec3,
-    d: f32,
+pub struct Plane {
+    pub normal: glam::Vec3,
+    pub d: f32,
 }
 
 pub struct Camera {
@@ -84,5 +85,18 @@ impl CameraUniform {
     pub fn update_view_proj(&mut self, camera: &Camera) {
         let mat = OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix();
         self.view_proj = mat.to_cols_array_2d();
+    }
+
+    pub fn get_view_proj(&self) -> [[f32; 4]; 4] {
+        self.view_proj
+    }
+
+    pub fn mat4_from_array(m: [[f32; 4]; 4]) -> glam::Mat4 {
+        glam::Mat4::from_cols(
+            glam::Vec4::from(m[0]),
+            glam::Vec4::from(m[1]),
+            glam::Vec4::from(m[2]),
+            glam::Vec4::from(m[3]),
+        )
     }
 }

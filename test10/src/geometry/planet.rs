@@ -1064,9 +1064,18 @@ impl Planet {
         // );
 
 
-struct PlanetInstance {
-    position: glam::Vec3,
-    rotation: glam::Quat,
+pub struct PlanetInstance {
+    pub position: glam::Vec3,
+    pub rotation: glam::Quat,
+}
+
+impl PlanetInstance {
+    pub fn new(position: glam::Vec3, rotation: glam::Quat) -> Self {
+        PlanetInstance {
+            position,
+            rotation
+        }
+    }
 }
 
 impl PlanetInstance {
@@ -1085,7 +1094,8 @@ pub struct PlanetHandle {
     pub index_buffer: Option<wgpu::Buffer>,
     pub instance_buffer: Option<wgpu::Buffer>,
     pub num_indices: u32,
-    instance: PlanetInstance
+    pub instance: PlanetInstance,
+    pub is_visible: bool
 
 }
 
@@ -1099,7 +1109,8 @@ impl PlanetHandle {
             index_buffer: None,
             instance_buffer: None,
             num_indices: 0,
-            instance: PlanetInstance {position, rotation}
+            instance: PlanetInstance {position, rotation},
+            is_visible: false
         }
     }
 
@@ -1144,4 +1155,5 @@ impl PlanetHandle {
     pub fn is_ready(&self) -> bool {
         *self.is_ready.borrow()
     }
+
 }
