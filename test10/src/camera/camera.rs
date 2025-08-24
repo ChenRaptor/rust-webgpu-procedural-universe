@@ -6,6 +6,11 @@ pub const OPENGL_TO_WGPU_MATRIX: glam::Mat4 = glam::Mat4::from_cols(
     glam::Vec4::new(0.0, 0.0, 0.5, 1.0),
 );
 
+struct Plane {
+    normal: glam::Vec3,
+    d: f32,
+}
+
 pub struct Camera {
     pub eye: glam::Vec3,
     pub target: glam::Vec3,
@@ -40,6 +45,26 @@ impl Camera {
         // let view_proj = proj * view;
         // log::info!("{:?}", view_proj);
         proj * view
+    }
+
+    /// Extrait les 6 plans du frustum à partir de la matrice view-projection (déjà transformée avec OPENGL_TO_WGPU_MATRIX)
+    pub fn extract_frustum_planes(view_proj: &glam::Mat4) -> [Plane; 6] {
+        // La matrice est en column-major, donc on transpose pour accéder aux lignes
+        let m = view_proj.to_cols_array_2d();
+        let row = |i| glam::Vec4::new(m[0][i], m[1][i], m[2][i], m[3][i]);
+        let planes = [
+            row(3) + row(0), // left
+            row(3) - row(0), // right
+            row(3) + row(1), // bottom
+            row(3) - row(1), // top
+            row(3) + row(2), // near
+            row(3) - row(2), // far
+        ];
+        planes.map(|p| {
+            let n = glam::Vec3::new(p.x, p.y, p.z);
+            let l = n.length();
+            Plane { normal: n / l, d: p.w / l }
+        })
     }
 }
 

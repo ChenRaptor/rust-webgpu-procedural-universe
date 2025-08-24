@@ -1,8 +1,9 @@
-use glam::Vec3;
+use glam::{Vec3, Quat};
 use crate::geometry::{icosphere::IcoSphere};
 use crate::geometry::kdtree3d::KDTree3D;
 use crate::geometry::fbm::fbm_perlin_noise;
 use crate::Vertex;
+use crate::InstanceRaw;
 use std::f32::consts::PI;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -1035,6 +1036,46 @@ impl Planet {
     }
 }
 
+        // let instances: Vec<Instance> = {
+        //     let position = glam::Vec3::new(0.0, 0.0, 0.0);
+
+        //     let rotation = if position.length_squared() < f32::EPSILON {
+        //         // this is needed so an object at (0, 0, 0) won't get scaled to zero
+        //         // as Quaternions can affect scale if they're not created correctly
+        //         glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
+        //     } else {
+        //         glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
+        //     };
+        //     vec![
+        //         Instance {
+        //             position,
+        //             rotation,
+        //         }
+        //     ]
+        // };
+
+        // let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        // let instance_buffer = device.create_buffer_init(
+        //     &wgpu::util::BufferInitDescriptor {
+        //         label: Some("Instance Buffer"),
+        //         contents: bytemuck::cast_slice(&instance_data),
+        //         usage: wgpu::BufferUsages::VERTEX,
+        //     }
+        // );
+
+
+struct PlanetInstance {
+    position: glam::Vec3,
+    rotation: glam::Quat,
+}
+
+impl PlanetInstance {
+    fn to_raw(&self) -> InstanceRaw {
+        InstanceRaw {
+            model: (glam::Mat4::from_translation(self.position) * glam::Mat4::from_quat(self.rotation)).to_cols_array_2d(),
+        }
+    }
+}
 
 pub struct PlanetHandle {
     pub planet: Rc<RefCell<Planet>>,
@@ -1042,18 +1083,23 @@ pub struct PlanetHandle {
     pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
     pub vertex_buffer: Option<wgpu::Buffer>,
     pub index_buffer: Option<wgpu::Buffer>,
+    pub instance_buffer: Option<wgpu::Buffer>,
     pub num_indices: u32,
+    instance: PlanetInstance
+
 }
 
 impl PlanetHandle {
-    pub fn new(planet: Planet) -> Self {
+    pub fn new(planet: Planet, position: Vec3, rotation: Quat) -> Self {
         Self {
             planet: Rc::new(RefCell::new(planet)),
             is_ready: Rc::new(RefCell::new(false)),
             pending: Rc::new(RefCell::new(None)),
             vertex_buffer: None,
             index_buffer: None,
+            instance_buffer: None,
             num_indices: 0,
+            instance: PlanetInstance {position, rotation}
         }
     }
 
@@ -1079,6 +1125,13 @@ impl PlanetHandle {
                 label: Some("Index Buffer"),
                 contents: bytemuck::cast_slice(&indices),
                 usage: wgpu::BufferUsages::INDEX,
+            }));
+
+            let instance_data = vec![PlanetInstance::to_raw(&self.instance)];
+            self.instance_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Instance Buffer"),
+                    contents: bytemuck::cast_slice(&instance_data),
+                    usage: wgpu::BufferUsages::VERTEX,
             }));
 
             self.num_indices = indices.len() as u32;

@@ -72,7 +72,7 @@ impl Instance {
 // NEW!
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct InstanceRaw {
+pub struct InstanceRaw {
     model: [[f32; 4]; 4],
 }
 
@@ -230,10 +230,6 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     render_pipeline: wgpu::RenderPipeline,
-    // #[allow(dead_code)]
-    // diffuse_texture: texture::Texture,
-    // diffuse_bind_group: wgpu::BindGroup,
-    // NEW!
     camera: Camera,
     camera_controller: CameraController,
     camera_uniform: CameraUniform,
@@ -244,10 +240,7 @@ pub struct State {
     model_bind_group: wgpu::BindGroup,
     rotation_angle: f32,
     window: Arc<Window>,
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
     planet_handle: PlanetHandle,
-    // planet: Planet
 }
 
 impl State {
@@ -445,83 +438,13 @@ impl State {
             cache: None,
         });
 
-
-
-
-
-
-
-
-
-
-
-
-
         let planet2 = Planet::new();
-
-
-        let planet_handle = PlanetHandle::new(planet2);
-        planet_handle.generate_async(5);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        // StellarSystem::new(glam::Vec3::ZERO);
-
-        let instances: Vec<Instance> = {
-            let position = glam::Vec3::new(0.0, 0.0, 0.0);
-
-            let rotation = if position.length_squared() < f32::EPSILON {
-                // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                // as Quaternions can affect scale if they're not created correctly
-                glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
-            } else {
-                glam::Quat::from_axis_angle(position.normalize(), 45.0_f32.to_radians())
-            };
-            vec![
-                Instance {
-                    position,
-                    rotation,
-                }
-            ]
-        };
-
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instance_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
+        let planet_handle = PlanetHandle::new(
+            planet2, 
+            glam::Vec3::ZERO, 
+            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
         );
-
+        planet_handle.generate_async(5);
 
         Ok(Self {
             surface,
@@ -530,8 +453,6 @@ impl State {
             config,
             is_surface_configured: false,
             render_pipeline,
-            // diffuse_texture,
-            // diffuse_bind_group,
             camera,
             camera_controller,
             camera_buffer,
@@ -542,8 +463,6 @@ impl State {
             model_bind_group,
             rotation_angle: 0.0,
             window,
-            instances,
-            instance_buffer,
             planet_handle,
         })
     }
@@ -642,11 +561,11 @@ impl State {
 
             if self.planet_handle.is_ready()
             {
-                if let (Some(vb), Some(ib)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer) {
+                if let (Some(vb), Some(ib), Some(jo)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer, &self.planet_handle.instance_buffer) {
                     render_pass.set_vertex_buffer(0, vb.slice(..));
-                    render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+                    render_pass.set_vertex_buffer(1, jo.slice(..));
                     render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..self.instances.len() as _);
+                    render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
                 }
             }
         }
