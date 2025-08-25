@@ -700,7 +700,7 @@ impl Planet {
                     let indices = planet_x.get_indices(lod).to_vec();
                     
                     *pending_clone.borrow_mut() = Some((vertices, indices));
-    
+                    worker_clone.terminate();
                 }
             }
         }) as Box<dyn FnMut(MessageEvent)>);
@@ -1095,12 +1095,13 @@ pub struct PlanetHandle {
     pub instance_buffer: Option<wgpu::Buffer>,
     pub num_indices: u32,
     pub instance: PlanetInstance,
-    pub is_visible: bool
+    pub is_visible: bool,
+    pub id: u32
 
 }
 
 impl PlanetHandle {
-    pub fn new(planet: Planet, position: Vec3, rotation: Quat) -> Self {
+    pub fn new(planet: Planet, position: Vec3, rotation: Quat, id: u32) -> Self {
         Self {
             planet: Rc::new(RefCell::new(planet)),
             is_ready: Rc::new(RefCell::new(false)),
@@ -1110,7 +1111,8 @@ impl PlanetHandle {
             instance_buffer: None,
             num_indices: 0,
             instance: PlanetInstance {position, rotation},
-            is_visible: false
+            is_visible: false,
+            id
         }
     }
 
@@ -1122,7 +1124,7 @@ impl PlanetHandle {
         Planet::generate_worker(&planet, pending_flag, lod);
     }
 
-    pub fn upload_if_ready(&mut self, device: &wgpu::Device) {
+    pub fn upload_if_ready(&mut self, device: &wgpu::Device) -> bool {
 
         if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
             
@@ -1149,7 +1151,9 @@ impl PlanetHandle {
             log::info!("Planet is uploaded");
 
             *self.is_ready.borrow_mut() = true;
+            return true;
         }
+        return false;
     }
 
     pub fn is_ready(&self) -> bool {

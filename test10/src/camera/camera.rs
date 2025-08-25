@@ -7,9 +7,20 @@ pub const OPENGL_TO_WGPU_MATRIX: glam::Mat4 = glam::Mat4::from_cols(
     glam::Vec4::new(0.0, 0.0, 0.5, 1.0),
 );
 
+#[derive(Copy, Clone)]
 pub struct Plane {
     pub normal: glam::Vec3,
     pub d: f32,
+}
+
+impl Plane {
+    pub fn default() -> Self
+    {
+        Plane {
+            normal: glam::Vec3::ZERO,
+            d: 0.0
+        }
+    }
 }
 
 pub struct Camera {

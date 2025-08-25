@@ -27,10 +27,10 @@ fn main() {
                 planet.generate(lod);
                 let planet_vertex = &planet.lod_levels[lod as usize];
 
-                web_sys::console::log_1(&format!("[worker] planet_vertex.indice = {}", planet_vertex.indice.len()).into());
-                web_sys::console::log_1(&format!("[worker] planet_vertex.position = {}", planet_vertex.position.len()).into());
-                web_sys::console::log_1(&format!("[worker] planet_vertex.color = {}", planet_vertex.color.len()).into());
-                web_sys::console::log_1(&format!("[worker] planet_vertex.normal = {}", planet_vertex.normal.len()).into());
+                // web_sys::console::log_1(&format!("[worker] planet_vertex.indice = {}", planet_vertex.indice.len()).into());
+                // web_sys::console::log_1(&format!("[worker] planet_vertex.position = {}", planet_vertex.position.len()).into());
+                // web_sys::console::log_1(&format!("[worker] planet_vertex.color = {}", planet_vertex.color.len()).into());
+                // web_sys::console::log_1(&format!("[worker] planet_vertex.normal = {}", planet_vertex.normal.len()).into());
 
                 // Position
                 let lod9_position = Reflect::get(&data, &JsValue::from_str("lod_pos")).unwrap_or(JsValue::NULL);
@@ -53,7 +53,7 @@ fn main() {
                 let lod9_indice_arr = Uint32Array::new(&lod9_indice);
                 lod9_indice_arr.copy_from(&planet_vertex.indice[..]);
 
-                web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(lod as usize)).into());
+                // web_sys::console::log_1(&format!("[worker] Vertex count = {}", planet.get_vertex_count(lod as usize)).into());
                 scope_clone.post_message(&data).expect("Worker send response");
                 return;
             }

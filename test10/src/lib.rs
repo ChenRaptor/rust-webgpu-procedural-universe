@@ -211,35 +211,55 @@ fn make_instance_vec() -> Vec<PlanetHandle> {
             Planet::new(),
             glam::Vec3::ZERO,
             glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+            0
         ),
         PlanetHandle::new(
             Planet::new(),
-            glam::Vec3::new(13.0, 24.0, 0.0),
+            glam::Vec3::new(1.0, 0.0, 0.0),
             glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+            1
         ),
         PlanetHandle::new(
             Planet::new(),
-            glam::Vec3::new(13.0, -24.0, 0.0),
+            glam::Vec3::new(2.0, 0.0, 0.0),
             glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+            2
+        ),
+        PlanetHandle::new(
+            Planet::new(),
+            glam::Vec3::new(10.0, 0.0, 0.0),
+            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+            3
         )
     ]
 }
 
 struct Manager {
     pub planet_instances: Vec<PlanetHandle>,
-    pub planes: [Plane; 6]
+    pub buffer_loader: Vec<u32>,
+    planes: [Plane; 6],
+    pub in_computing: bool,
+    pub id_in_computing: u32
 }
 
 impl Manager {
 
-    pub fn new(planes: [Plane; 6]) -> Self {
+    pub fn new() -> Self {
         Manager {
             planet_instances: make_instance_vec(),
-            planes
+            buffer_loader: Vec::new(),
+            planes: [Plane::default(); 6],
+            in_computing: false,
+            id_in_computing: 0
         }
     }
 
-    fn check_visibility_cluster(&mut self)
+    fn set_planes(&mut self, planes: [Plane; 6])
+    {
+        self.planes = planes;
+    }
+
+    fn check_visibility_cluster(&mut self, device: &wgpu::Device)
     {
         for planet_instance in &mut self.planet_instances {
             let mut visible = true;
@@ -250,6 +270,45 @@ impl Manager {
                 }
             }
             planet_instance.is_visible = visible;
+            if visible && !planet_instance.is_ready()
+            {
+                self.buffer_loader.push(planet_instance.id)
+            }
+        }
+        if !self.in_computing
+        {
+            if let Some(id) = self.buffer_loader.get(0) {
+                self.id_in_computing = *id;
+                if let Some(planet_handle) = self.planet_instances.iter_mut().find(|p| p.id == *id) {
+                    self.in_computing = true;
+                    planet_handle.generate_async(5);
+                }
+            }
+        }
+        else
+        {
+            if let Some(planet_handle) = self.planet_instances.iter_mut().find(|p| p.id == self.id_in_computing) {
+                if planet_handle.upload_if_ready(&device)
+                {
+                    self.in_computing = false;
+                }
+                self.buffer_loader.clear();
+            }
+        }
+    }
+
+    fn render_visible_object(&mut self, render_pass: &mut wgpu::RenderPass)
+    {
+        for planet_instance in &mut self.planet_instances {
+            if planet_instance.is_visible && planet_instance.is_ready()
+            {
+                if let (Some(vb), Some(ib), Some(jo)) = (&planet_instance.vertex_buffer, &planet_instance.index_buffer, &planet_instance.instance_buffer) {
+                    render_pass.set_vertex_buffer(0, vb.slice(..));
+                    render_pass.set_vertex_buffer(1, jo.slice(..));
+                    render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..planet_instance.num_indices, 0, 0..1);
+                }
+            }
         }
     }
 }
@@ -302,7 +361,7 @@ pub struct State {
     model_bind_group: wgpu::BindGroup,
     rotation_angle: f32,
     window: Arc<Window>,
-    planet_handle: PlanetHandle,
+    manager: Manager
 }
 
 impl State {
@@ -500,15 +559,10 @@ impl State {
             cache: None,
         });
 
-        let planet2 = Planet::new();
-        let planet_handle = PlanetHandle::new(
-            planet2, 
-            glam::Vec3::ZERO, 
-            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians())
-        );
-        planet_handle.generate_async(5);
+    let mut manager = Manager::new();
 
-        Ok(Self {
+
+      Ok(Self {
             surface,
             device,
             queue,
@@ -525,7 +579,7 @@ impl State {
             model_bind_group,
             rotation_angle: 0.0,
             window,
-            planet_handle,
+            manager,
         })
     }
 
@@ -553,15 +607,16 @@ impl State {
     }
 
     fn update(&mut self) {
+  
 
         self.camera_uniform.get_view_proj();
         let mat4 = CameraUniform::mat4_from_array(self.camera_uniform.get_view_proj());
         let planes = Camera::extract_frustum_planes(&mat4);
-        let mut manager = Manager::new(planes);
-        manager.check_visibility_cluster();
+        // let mut manager = Manager::new(planes);
+        self.manager.set_planes(planes);
+        self.manager.check_visibility_cluster(&self.device);
         
-
-        self.rotation_angle += 0.01; // vitesse de rotation
+      self.rotation_angle += 0.01; // vitesse de rotation
         self.model_uniform.update_rotation(self.rotation_angle);
         self.queue.write_buffer(
             &self.model_buffer,
@@ -580,7 +635,7 @@ impl State {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
 
-        log::info!("Render");
+        // log::info!("Render");
 
 
         
@@ -588,7 +643,6 @@ impl State {
         if !self.is_surface_configured {
             return Ok(());
         }
-        self.planet_handle.upload_if_ready(&self.device);
 
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -629,15 +683,19 @@ impl State {
             render_pass.set_bind_group(1, &self.model_bind_group, &[]);
 
 
-            if self.planet_handle.is_ready()
-            {
-                if let (Some(vb), Some(ib), Some(jo)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer, &self.planet_handle.instance_buffer) {
-                    render_pass.set_vertex_buffer(0, vb.slice(..));
-                    render_pass.set_vertex_buffer(1, jo.slice(..));
-                    render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
-                }
-            }
+            self.manager.render_visible_object(&mut render_pass);
+
+
+            // render_visible_object()
+            // if self.planet_handle.is_ready()
+            // {
+            //     if let (Some(vb), Some(ib), Some(jo)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer, &self.planet_handle.instance_buffer) {
+            //         render_pass.set_vertex_buffer(0, vb.slice(..));
+            //         render_pass.set_vertex_buffer(1, jo.slice(..));
+            //         render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+            //         render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
+            //     }
+            // }
         }
 
         self.queue.submit(iter::once(encoder.finish()));
