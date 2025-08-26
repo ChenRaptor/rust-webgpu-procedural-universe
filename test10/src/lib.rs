@@ -56,6 +56,8 @@ use stellar_system::{CelestialBody, StellarSystem};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::geometry::icosphere::IcoSphere;
+
 struct Instance {
     position: glam::Vec3,
     rotation: glam::Quat,
@@ -114,26 +116,6 @@ impl InstanceRaw {
         }
     }
 }
-
-
-
-
-// const NUM_INSTANCES_PER_ROW: u32 = 1;
-// const INSTANCE_DISPLACEMENT: glam::Vec3 = glam::Vec3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
-
-
-
-
-
-
-
-
-
-
-
-
-
-// mod texture;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -529,6 +511,13 @@ impl State {
             cache: None,
         });
 
+
+        // let start = js_sys::Date::now();
+        // let mut solid = IcoSphere::new();
+        // solid.generate(9);
+        // let end = js_sys::Date::now();
+        // web_sys::console::log_1(&format!("Temps CPU pour generate(9): {} ms", end - start).into());
+
         let system = StellarSystem::new(glam::Vec3::new(0.0,0.0,0.0));
 
         let result: Vec<PlanetHandle> = system.bodies.iter().enumerate().map(|(i, body)| {
@@ -550,7 +539,7 @@ impl State {
 
         log::info!("Taille du Vec<PlanetHandle> : {}", result.len());
 
-    let mut manager = Manager::new(result);
+        let mut manager = Manager::new(result);
 
 
       Ok(Self {
@@ -607,7 +596,7 @@ impl State {
         self.manager.set_planes(planes);
         self.manager.check_visibility_cluster(&self.device);
         
-      self.rotation_angle += 0.01; // vitesse de rotation
+        self.rotation_angle += 0.01; // vitesse de rotation
         self.model_uniform.update_rotation(self.rotation_angle);
         self.queue.write_buffer(
             &self.model_buffer,
@@ -626,11 +615,6 @@ impl State {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         self.window.request_redraw();
 
-        // log::info!("Render");
-
-
-        
-        // We can't render unless the surface is configured
         if !self.is_surface_configured {
             return Ok(());
         }
@@ -675,18 +659,6 @@ impl State {
 
 
             self.manager.render_visible_object(&mut render_pass);
-
-
-            // render_visible_object()
-            // if self.planet_handle.is_ready()
-            // {
-            //     if let (Some(vb), Some(ib), Some(jo)) = (&self.planet_handle.vertex_buffer, &self.planet_handle.index_buffer, &self.planet_handle.instance_buffer) {
-            //         render_pass.set_vertex_buffer(0, vb.slice(..));
-            //         render_pass.set_vertex_buffer(1, jo.slice(..));
-            //         render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-            //         render_pass.draw_indexed(0..self.planet_handle.num_indices, 0, 0..1);
-            //     }
-            // }
         }
 
         self.queue.submit(iter::once(encoder.finish()));

@@ -1,85 +1,75 @@
-// use glam::Vec3;
+use glam::Vec3;
 
-// pub struct Star {
-//     max_subdivision: u8,
-//     radius: f32,
-//     sphere_vertices: Vec<f32>,
-//     sphere_indices: Vec<u32>,
-// }
+pub struct StarVertex {
+    pub position: Vec<f32>,
+    pub color: Vec<f32>,
+    pub indice: Vec<u32>
+}
 
-// impl Star {
-//     pub fn new() -> Self {
-//         Planet {
-//             max_subdivision: 4,
-//             radius: 1.0,
-//             sphere_vertices: Vec::new(),
-//             sphere_indices: Vec::new(),
-//         }
-//     }
+impl StarVertex {
+    pub fn new() -> Self {
+        PlanetVertex {
+            position: Vec::new(),
+            color: Vec::new(),
+            indice:Vec::new()
+        }
+    }
+}
 
-//     pub fn generate(&mut self, subdivision: u8) {
-//         let mut max_solid = IcoSphere::new();
-//         max_solid.generate(self.max_subdivision as u32);
+pub struct Star {
+    max_subdivision: u8,
+    radius: f32,
+    sphere_vertices: Vec<f32>,
+    sphere_indices: Vec<u32>,
+    lod: Vec<StarVertex>
+}
 
-//         let vertex_count = max_solid.vertices.len();
-//         let index_count = max_solid.indices.len();
+impl Star {
+    pub fn new() -> Self {
+        Planet {
+            max_subdivision: 4,
+            radius: 1.0,
+            sphere_vertices: Vec::new(),
+            sphere_indices: Vec::new(),
+            lod: Vec::new()
+        }
+    }
 
-//         self.sphere_vertices.clear();
-//         self.sphere_indices.clear();
-//         self.sphere_vertices.resize(vertex_count * 9, 0.0);
-//         self.sphere_indices.reserve(index_count);
+    pub fn generate(&mut self, subdivision: u8) {
+        let mut solid = IcoSphere::new();
+        solid.generate(subdivision);
 
-//         for (i, vertex) in vertices.iter().enumerate() {
-//             self.sphere_vertices[9 * i + 0] = vertex.x;
-//             self.sphere_vertices[9 * i + 1] = vertex.y;
-//             self.sphere_vertices[9 * i + 2] = vertex.z;
+        let vertex_count = solid.vertices.len();
+        let indice_count = solid.indices.len();
+        let vertices = &solid.vertices;
+        
+        let mut star_vertex = StarVertex::new();
+        let color = &mut star_vertex.color;
+        let indice = &mut star_vertex.indice;
+        
+        position.resize(3 * vertex_count, 0.0);
+        color.resize(3 * vertex_count, 0.0);
+        indice.reserve(indice_count);
 
-//             self.sphere_vertices[9 * i + 3] = 1.0;
-//             self.sphere_vertices[9 * i + 4] = 0.0;
-//             self.sphere_vertices[9 * i + 5] = 0.0;
-//         }
+        // Remplir les vertices
+        for (i, vertex) in vertices.iter().enumerate() {
 
-//         // Indices
-//         self.sphere_indices.extend_from_slice(&solid.indices);
+            // Position
+            position[3 * i] = vertex.x;
+            position[3 * i + 1] = vertex.y;
+            position[3 * i + 2] = vertex.z;
 
-//         // Calcul des normales par accumulation
-//         let mut normals = vec![Vec3::ZERO; vertex_count];
-//         for triangle in self.sphere_indices.chunks(3) {
-//             let i0 = triangle[0] as usize;
-//             let i1 = triangle[1] as usize;
-//             let i2 = triangle[2] as usize;
+            // Couleur
+            color[3 * i] = 0.7;
+            color[3 * i + 1] = 0.3;
+            color[3 * i + 2] = 0.3;
+        }
 
-//             let v0 = Vec3::new(
-//                 self.sphere_vertices[9 * i0],
-//                 self.sphere_vertices[9 * i0 + 1],
-//                 self.sphere_vertices[9 * i0 + 2],
-//             );
-//             let v1 = Vec3::new(
-//                 self.sphere_vertices[9 * i1],
-//                 self.sphere_vertices[9 * i1 + 1],
-//                 self.sphere_vertices[9 * i1 + 2],
-//             );
-//             let v2 = Vec3::new(
-//                 self.sphere_vertices[9 * i2],
-//                 self.sphere_vertices[9 * i2 + 1],
-//                 self.sphere_vertices[9 * i2 + 2],
-//             );
+        // Indices
+        indice.extend_from_slice(&solid.indices);
 
-//             let edge1 = v1 - v0;
-//             let edge2 = v2 - v0;
-//             let normal = edge1.cross(edge2).normalize();
+        self.lod.resize(subdivision as usize + 1, StarVertex::new());
+        self.lod[subdivision as usize] = star_vertex;
 
-//             normals[i0] += normal;
-//             normals[i1] += normal;
-//             normals[i2] += normal;
-//         }
-
-//         // Normaliser et assigner les normales
-//         for (i, normal) in normals.iter().enumerate() {
-//             let n = normal.normalize();
-//             self.sphere_vertices[9 * i + 6] = n.x;
-//             self.sphere_vertices[9 * i + 7] = n.y;
-//             self.sphere_vertices[9 * i + 8] = n.z;
-//         }
-//     }
-// }
+    }
+}
