@@ -41,150 +41,20 @@ fn time_diff_ms(start: TimeStamp, end: TimeStamp) -> f64 {
 pub mod geometry {
     pub mod icosphere;
     pub mod kdtree3d;
-    pub mod planet;
     pub mod fbm;
 }
 
 mod camera;
 mod stellar_system;
+pub mod celestial_body;
 
-// use geometry::icosphere::IcoSphere;
-use geometry::planet::{Planet, PlanetHandle, PlanetVertex, PlanetInstance};
+use celestial_body::planet::planet_geometry::{PlanetGeometry, PlanetHandle, PlanetVertex};
+use celestial_body::planet::render_pipeline::planet_render_pipeline;
 use camera::{Camera, CameraUniform, CameraController, Plane};
 use stellar_system::{CelestialBody, StellarSystem};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-
-use crate::geometry::icosphere::IcoSphere;
-
-struct Instance {
-    position: glam::Vec3,
-    rotation: glam::Quat,
-}
-
-// NEW!
-impl Instance {
-    fn to_raw(&self) -> InstanceRaw {
-        InstanceRaw {
-            model: (glam::Mat4::from_translation(self.position) * glam::Mat4::from_quat(self.rotation)).to_cols_array_2d(),
-        }
-    }
-}
-// NEW!
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct InstanceRaw {
-    model: [[f32; 4]; 4],
-}
-
-impl InstanceRaw {
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
-            // We need to switch from using a step mode of Vertex to Instance
-            // This means that our shaders will only change to use the next
-            // instance when the shader starts processing a new instance
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                // A mat4 takes up 4 vertex slots as it is technically 4 vec4s. We need to define a slot
-                // for each vec4. We'll have to reassemble the mat4 in the shader.
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    // While our vertex shader only uses locations 0, and 1 now, in later tutorials, we'll
-                    // be using 2, 3, and 4, for Vertex. We'll start at slot 5, not conflict with them later
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-            ],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
-    normal: [f32; 3],
-}
-
-impl Vertex {
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        use std::mem;
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: (mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-            ],
-        }
-    }
-
-    fn from_planet_buffer(buffer: &[f32], vertex_index: usize) -> Self {
-        let start = vertex_index * 9;
-        Self {
-            position: [buffer[start], buffer[start + 1], buffer[start + 2]],
-            color: [buffer[start + 3], buffer[start + 4], buffer[start + 5]],
-            normal: [buffer[start + 6], buffer[start + 7], buffer[start + 8]],
-        }
-    }
-
-    pub fn planet_vertex_to_vertex(pv: &PlanetVertex) -> Vec<Vertex> {
-        let len: usize = pv.position.len() / 3;
-        let mut vertices = Vec::with_capacity(len);
-        for i in 0..len {
-            let position = [
-                pv.position[3 * i],
-                pv.position[3 * i + 1],
-                pv.position[3 * i + 2],
-            ];
-            let color = [
-                pv.color[3 * i],
-                pv.color[3 * i + 1],
-                pv.color[3 * i + 2],
-            ];
-            let normal = [
-                pv.normal[3 * i],
-                pv.normal[3 * i + 1],
-                pv.normal[3 * i + 2],
-            ];
-            vertices.push(Vertex { position, color, normal });
-        }
-        vertices
-    }
-
-}
 
 struct Manager {
     pub planet_instances: Vec<PlanetHandle>,
@@ -448,88 +318,27 @@ impl State {
             label: Some("model_bind_group"),
         });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[/*&texture_bind_group_layout, */
-                    &camera_bind_group_layout,
-                    &model_bind_group_layout,
-                ],
-                push_constant_ranges: &[],
-            });
-
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc(), InstanceRaw::desc()],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
-                // or Features::POLYGON_MODE_POINT
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            // If the pipeline will be used with a multiview render pass, this
-            // indicates how many array layers the attachments will have.
-            multiview: None,
-            // Useful for optimizing shader compilation on Android
-            cache: None,
-        });
-
-
-        // let start = js_sys::Date::now();
-        // let mut solid = IcoSphere::new();
-        // solid.generate(9);
-        // let end = js_sys::Date::now();
-        // web_sys::console::log_1(&format!("Temps CPU pour generate(9): {} ms", end - start).into());
+        let render_pipeline = planet_render_pipeline(
+            &device, 
+            &[
+                &camera_bind_group_layout,
+                &model_bind_group_layout,
+            ], 
+            &config
+        );
 
         let system = StellarSystem::new(glam::Vec3::new(0.0,0.0,0.0));
 
         let result: Vec<PlanetHandle> = system.bodies.iter().enumerate().map(|(i, body)| {
             match body {
                 CelestialBody::Star(star) => PlanetHandle::new(
-                    Planet::new(),
+                    PlanetGeometry::new(),
                     star.position,
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32
                 ),
                 CelestialBody::Planet(planet) => PlanetHandle::new(
-                    Planet::new(),
+                    PlanetGeometry::new(),
                     planet.position,
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32

@@ -2,8 +2,7 @@ use js_sys::{Array, Float32Array, Reflect, Uint32Array, Uint8Array};
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{DedicatedWorkerGlobalScope, MessageEvent};
 use wasm_bindgen::JsValue;
-use webworker_example::geometry::planet::Planet;
-
+use webworker_example::celestial_body::planet::planet_geometry::PlanetGeometry;
 fn main() {
     // Affiche erreur de rust dans la console JS
     console_error_panic_hook::set_once();
@@ -23,7 +22,7 @@ fn main() {
                 let config_data = Uint8Array::new(&config);
                 let lod = config_data.get_index(0);
                 
-                let mut planet = Planet::new();
+                let mut planet = PlanetGeometry::new();
                 planet.generate(lod);
                 let planet_vertex = &planet.lod_levels[lod as usize];
 
