@@ -1,11 +1,10 @@
-use crate::PlanetVertex;
+use crate::celestial_body::StarVertex;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     position: [f32; 3],
-    color: [f32; 3],
-    normal: [f32; 3],
+    color: [f32; 3]
 }
 
 impl Vertex {
@@ -24,12 +23,7 @@ impl Vertex {
                     offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: (mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
+                }
             ],
         }
     }
@@ -43,7 +37,7 @@ impl Vertex {
     //     }
     // }
 
-    pub fn planet_vertex_to_vertex(pv: &PlanetVertex) -> Vec<Vertex> {
+    pub fn planet_vertex_to_vertex(pv: &StarVertex) -> Vec<Vertex> {
         let len: usize = pv.position.len() / 3;
         let mut vertices = Vec::with_capacity(len);
         for i in 0..len {
@@ -57,12 +51,7 @@ impl Vertex {
                 pv.color[3 * i + 1],
                 pv.color[3 * i + 2],
             ];
-            let normal = [
-                pv.normal[3 * i],
-                pv.normal[3 * i + 1],
-                pv.normal[3 * i + 2],
-            ];
-            vertices.push(Vertex { position, color, normal });
+            vertices.push(Vertex { position, color });
         }
         vertices
     }

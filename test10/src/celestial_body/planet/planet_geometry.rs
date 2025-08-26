@@ -9,42 +9,44 @@ use wgpu::util::DeviceExt;
 
 use crate::celestial_body::planet::planet_vertex::Vertex;
 use crate::celestial_body::planet::planet_instance::InstanceRaw;
+use crate::celestial_body::worker::worker_new;
 
 use js_sys::{Array, Float32Array, Uint8Array};
 use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::{window, Blob, BlobPropertyBag, MessageEvent, Url, Worker};
+use web_sys::{MessageEvent};
 use js_sys::{SharedArrayBuffer, Uint32Array, Reflect, Object};
 use wasm_bindgen::JsValue;
+use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_COL;
+use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_IND;
+use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_NOR;
+use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_POS;
 
-fn worker_new(name: &str) -> Worker {
-    let origin = window()
-        .expect("window to be available")
-        .location()
-        .origin()
-        .expect("origin to be available");
 
-    let script = Array::new();
-    script.push(
-        &format!(r#"importScripts("{origin}/{name}.js");wasm_bindgen("{origin}/{name}_bg.wasm");"#)
-            .into(),
-    );
+// fn worker_new(name: &str) -> Worker {
+//     let origin = window()
+//         .expect("window to be available")
+//         .location()
+//         .origin()
+//         .expect("origin to be available");
 
-    let blob = Blob::new_with_str_sequence_and_options(
-        &script,
-        BlobPropertyBag::new().type_("text/javascript"),
-    )
-    .expect("blob creation succeeds");
+//     let script = Array::new();
+//     script.push(
+//         &format!(r#"importScripts("{origin}/{name}.js");wasm_bindgen("{origin}/{name}_bg.wasm");"#)
+//             .into(),
+//     );
 
-    let url = Url::create_object_url_with_blob(&blob).expect("url creation succeeds");
+//     let blob = Blob::new_with_str_sequence_and_options(
+//         &script,
+//         BlobPropertyBag::new().type_("text/javascript"),
+//     )
+//     .expect("blob creation succeeds");
 
-    Worker::new(&url).expect("failed to spawn worker")
-}
+//     let url = Url::create_object_url_with_blob(&blob).expect("url creation succeeds");
+
+//     Worker::new(&url).expect("failed to spawn worker")
+// }
 
 // x4
-const LOD_SHARED_ARRAY_BUFFER_POS: [u32; 10] = [144, 504, 1944, 7704, 30744, 122904, 491544, 1966104, 7864344, 31457304];
-const LOD_SHARED_ARRAY_BUFFER_COL: [u32; 10] = [144, 504, 1944, 7704, 30744, 122904, 491544, 1966104, 7864344, 31457304];
-const LOD_SHARED_ARRAY_BUFFER_NOR: [u32; 10] = [144, 504, 1944, 7704, 30744, 122904, 491544, 1966104, 7864344, 31457304];
-const LOD_SHARED_ARRAY_BUFFER_IND: [u32; 10] = [240, 960, 3840, 15360, 61440, 245760, 983040, 3932160, 15728640, 62914560];
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -228,7 +230,7 @@ pub struct PlanetGeometry {
     lod_max_solid: Option<IcoSphere>,
     lod_max_vertices: Vec<Vec3>,
     lod_max_colors: Vec<Vec3>,
-    kd_tree_max: Option<KDTree3D>,
+    // kd_tree_max: Option<KDTree3D>,
     pub lod_levels: Vec<PlanetVertex>,
     pub lod_ready: bool,
     pub lod_levels2: Vec<Sphere>
@@ -291,7 +293,7 @@ impl PlanetGeometry {
             lod_max_solid: None,
             lod_max_vertices: Vec::new(),
             lod_max_colors: Vec::new(),
-            kd_tree_max: None,
+            // kd_tree_max: None,
             lod_levels: Vec::new(),
             lod_ready: false,
             lod_levels2: Vec::new()
@@ -629,6 +631,7 @@ impl PlanetGeometry {
         let config: SharedArrayBuffer = SharedArrayBuffer::new(1);
         let config_data: Uint8Array = Uint8Array::new(&config);
         config_data.set_index(0, lod as u8);
+        config_data.set_index(1, 0 as u8);
 
         // Create worker
         let worker = worker_new("worker-geometry");

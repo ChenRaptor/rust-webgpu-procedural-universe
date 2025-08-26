@@ -80,31 +80,28 @@ pub fn perlin_noise_3d(x: f32, y: f32, z: f32) -> f32 {
     let v = fade(y_frac);
     let w = fade(z_frac);
     
-    unsafe {
-        let a = P[x_int] + y_int;
-        let aa = P[a] + z_int;
-        let ab = P[a + 1] + z_int;
-        let b = P[x_int + 1] + y_int;
-        let ba = P[b] + z_int;
-        let bb = P[b + 1] + z_int;
-        
-        let res = lerp(w,
-            lerp(v,
-                lerp(u, grad(P[aa], x_frac, y_frac, z_frac), 
-                        grad(P[ba], x_frac - 1.0, y_frac, z_frac)),
-                lerp(u, grad(P[ab], x_frac, y_frac - 1.0, z_frac), 
-                        grad(P[bb], x_frac - 1.0, y_frac - 1.0, z_frac))
-            ),
-            lerp(v,
-                lerp(u, grad(P[aa + 1], x_frac, y_frac, z_frac - 1.0), 
-                        grad(P[ba + 1], x_frac - 1.0, y_frac, z_frac - 1.0)),
-                lerp(u, grad(P[ab + 1], x_frac, y_frac - 1.0, z_frac - 1.0), 
-                        grad(P[bb + 1], x_frac - 1.0, y_frac - 1.0, z_frac - 1.0))
-            )
-        );
-        
-        res
-    }
+    let a = P[x_int] + y_int;
+    let aa = P[a] + z_int;
+    let ab = P[a + 1] + z_int;
+    let b = P[x_int + 1] + y_int;
+    let ba = P[b] + z_int;
+    let bb = P[b + 1] + z_int;
+    
+    let res = lerp(w,
+        lerp(v,
+            lerp(u, grad(P[aa], x_frac, y_frac, z_frac), 
+                    grad(P[ba], x_frac - 1.0, y_frac, z_frac)),
+            lerp(u, grad(P[ab], x_frac, y_frac - 1.0, z_frac), 
+                    grad(P[bb], x_frac - 1.0, y_frac - 1.0, z_frac))
+        ),
+        lerp(v,
+            lerp(u, grad(P[aa + 1], x_frac, y_frac, z_frac - 1.0), 
+                    grad(P[ba + 1], x_frac - 1.0, y_frac, z_frac - 1.0)),
+            lerp(u, grad(P[ab + 1], x_frac, y_frac - 1.0, z_frac - 1.0), 
+                    grad(P[bb + 1], x_frac - 1.0, y_frac - 1.0, z_frac - 1.0))
+        )
+    );
+    res
 }
 
 /// Fonction de bruit fractal (FBM) utilisant le bruit de Perlin 3D.
