@@ -51,7 +51,7 @@ mod stellar_system;
 // use geometry::icosphere::IcoSphere;
 use geometry::planet::{Planet, PlanetHandle, PlanetVertex, PlanetInstance};
 use camera::{Camera, CameraUniform, CameraController, Plane};
-// use stellar_system::StellarSystem;
+use stellar_system::{CelestialBody, StellarSystem};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -204,36 +204,6 @@ impl Vertex {
 
 }
 
-// Use the public constructor or associated function for PlanetInstance
-fn make_instance_vec() -> Vec<PlanetHandle> {
-    vec![
-        PlanetHandle::new(
-            Planet::new(),
-            glam::Vec3::ZERO,
-            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
-            0
-        ),
-        PlanetHandle::new(
-            Planet::new(),
-            glam::Vec3::new(1.0, 0.0, 0.0),
-            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
-            1
-        ),
-        PlanetHandle::new(
-            Planet::new(),
-            glam::Vec3::new(2.0, 0.0, 0.0),
-            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
-            2
-        ),
-        PlanetHandle::new(
-            Planet::new(),
-            glam::Vec3::new(10.0, 0.0, 0.0),
-            glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
-            3
-        )
-    ]
-}
-
 struct Manager {
     pub planet_instances: Vec<PlanetHandle>,
     pub buffer_loader: Vec<u32>,
@@ -244,9 +214,9 @@ struct Manager {
 
 impl Manager {
 
-    pub fn new() -> Self {
+    pub fn new(planets: Vec<PlanetHandle>) -> Self {
         Manager {
-            planet_instances: make_instance_vec(),
+            planet_instances: planets,
             buffer_loader: Vec::new(),
             planes: [Plane::default(); 6],
             in_computing: false,
@@ -559,7 +529,28 @@ impl State {
             cache: None,
         });
 
-    let mut manager = Manager::new();
+        let system = StellarSystem::new(glam::Vec3::new(0.0,0.0,0.0));
+
+        let result: Vec<PlanetHandle> = system.bodies.iter().enumerate().map(|(i, body)| {
+            match body {
+                CelestialBody::Star(star) => PlanetHandle::new(
+                    Planet::new(),
+                    star.position,
+                    glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+                    i as u32
+                ),
+                CelestialBody::Planet(planet) => PlanetHandle::new(
+                    Planet::new(),
+                    planet.position,
+                    glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
+                    i as u32
+                ),
+            }
+        }).collect();
+
+        log::info!("Taille du Vec<PlanetHandle> : {}", result.len());
+
+    let mut manager = Manager::new(result);
 
 
       Ok(Self {
