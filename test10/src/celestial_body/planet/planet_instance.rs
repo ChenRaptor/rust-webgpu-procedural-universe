@@ -1,3 +1,23 @@
+pub struct PlanetInstance {
+    pub position: glam::Vec3,
+    pub rotation: glam::Quat,
+}
+
+impl PlanetInstance {
+    pub fn new(position: glam::Vec3, rotation: glam::Quat) -> Self {
+        PlanetInstance {
+            position,
+            rotation
+        }
+    }
+
+    pub fn to_raw(&self) -> InstanceRaw {
+        InstanceRaw {
+            model: (glam::Mat4::from_translation(self.position) * glam::Mat4::from_quat(self.rotation)).to_cols_array_2d(),
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InstanceRaw {

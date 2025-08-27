@@ -6,7 +6,7 @@ use std::time::{Instant};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::js_sys;
 
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, RenderPipeline};
 use winit::{
     application::ApplicationHandler, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::Window
 };
@@ -48,16 +48,22 @@ mod camera;
 mod stellar_system;
 pub mod celestial_body;
 
-use celestial_body::planet::planet_geometry::{PlanetGeometry, PlanetHandle, PlanetVertex};
+use celestial_body::planet::planet_geometry::{PlanetGeometry, PlanetVertex};
 use celestial_body::planet::render_pipeline::planet_render_pipeline;
+use celestial_body::star::render_pipeline::star_render_pipeline;
+use celestial_body::geometry_loader::{CelestialBodyHandle, CelestialBodyGeometry};
 use camera::{Camera, CameraUniform, CameraController, Plane};
 use stellar_system::{CelestialBody, StellarSystem};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::celestial_body::star::star_geometry::StarGeometry;
+
+// use crate::celestial_body::star::star_geometry::{CelestialBodyGeometry};
+
 struct Manager {
-    pub planet_instances: Vec<PlanetHandle>,
+    pub planet_instances: Vec<CelestialBodyHandle>,
     pub buffer_loader: Vec<u32>,
     planes: [Plane; 6],
     pub in_computing: bool,
@@ -66,7 +72,8 @@ struct Manager {
 
 impl Manager {
 
-    pub fn new(planets: Vec<PlanetHandle>) -> Self {
+    pub fn new(planets: Vec<CelestialBodyHandle>) -> Self {
+        log::info!("type={}",planets[0].get_type());
         Manager {
             planet_instances: planets,
             buffer_loader: Vec::new(),
@@ -86,7 +93,7 @@ impl Manager {
         for planet_instance in &mut self.planet_instances {
             let mut visible = true;
             for plane in &self.planes {
-                if plane.normal.dot(planet_instance.instance.position) + plane.d < -1.5 {
+                if plane.normal.dot(planet_instance.instance.get_position()) + plane.d < -1.5 {
                     visible = false;
                     break;
                 }
@@ -119,12 +126,30 @@ impl Manager {
         }
     }
 
-    fn render_visible_object(&mut self, render_pass: &mut wgpu::RenderPass)
+    fn render_visible_object(
+        &mut self, render_pass: &mut wgpu::RenderPass,
+        pipeline_render: &Vec<RenderPipeline>,
+        camera_bind_group: &wgpu::BindGroup,
+        model_bind_group: &wgpu::BindGroup
+    
+    )
     {
         for planet_instance in &mut self.planet_instances {
             if planet_instance.is_visible && planet_instance.is_ready()
             {
                 if let (Some(vb), Some(ib), Some(jo)) = (&planet_instance.vertex_buffer, &planet_instance.index_buffer, &planet_instance.instance_buffer) {
+                    if planet_instance.get_type() == 1
+                    {
+                        // log::info!("STAR");
+                        render_pass.set_pipeline(&pipeline_render[1]);
+                    }
+                    else
+                    {
+                        render_pass.set_pipeline(&pipeline_render[0]);
+                    }
+                    
+                    render_pass.set_bind_group(0, camera_bind_group, &[]);
+                    render_pass.set_bind_group(1, model_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, vb.slice(..));
                     render_pass.set_vertex_buffer(1, jo.slice(..));
                     render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
@@ -172,7 +197,7 @@ pub struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
-    render_pipeline: wgpu::RenderPipeline,
+    render_pipeline: Vec<wgpu::RenderPipeline>,
     camera: Camera,
     camera_controller: CameraController,
     camera_uniform: CameraUniform,
@@ -318,7 +343,16 @@ impl State {
             label: Some("model_bind_group"),
         });
 
-        let render_pipeline = planet_render_pipeline(
+        let render_pipeline_planet = planet_render_pipeline(
+            &device, 
+            &[
+                &camera_bind_group_layout,
+                &model_bind_group_layout,
+            ], 
+            &config
+        );
+
+        let render_pipeline_star = star_render_pipeline(
             &device, 
             &[
                 &camera_bind_group_layout,
@@ -329,20 +363,24 @@ impl State {
 
         let system = StellarSystem::new(glam::Vec3::new(0.0,0.0,0.0));
 
-        let result: Vec<PlanetHandle> = system.bodies.iter().enumerate().map(|(i, body)| {
+        let result: Vec<CelestialBodyHandle> = system.bodies.iter().enumerate().map(|(i, body)| {
             match body {
-                CelestialBody::Star(star) => PlanetHandle::new(
-                    PlanetGeometry::new(),
+                CelestialBody::Star(star) => {
+                    log::info!("STAR");
+                CelestialBodyHandle::new(
+                    CelestialBodyGeometry::Star(StarGeometry::new()),
                     star.position,
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32
-                ),
-                CelestialBody::Planet(planet) => PlanetHandle::new(
-                    PlanetGeometry::new(),
+                )},
+                CelestialBody::Planet(planet) => {
+                    log::info!("PLANET");
+                CelestialBodyHandle::new(
+                    CelestialBodyGeometry::Planet(PlanetGeometry::new()),
                     planet.position,
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32
-                ),
+                )},
             }
         }).collect();
 
@@ -357,7 +395,7 @@ impl State {
             queue,
             config,
             is_surface_configured: false,
-            render_pipeline,
+            render_pipeline: vec![render_pipeline_planet, render_pipeline_star],
             camera,
             camera_controller,
             camera_buffer,
@@ -460,14 +498,12 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
-
-            render_pass.set_pipeline(&self.render_pipeline);
-            // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.model_bind_group, &[]);
-
-
-            self.manager.render_visible_object(&mut render_pass);
+            self.manager.render_visible_object(
+                &mut render_pass, 
+                &self.render_pipeline, 
+                &self.camera_bind_group, 
+                &self.model_bind_group
+            );
         }
 
         self.queue.submit(iter::once(encoder.finish()));

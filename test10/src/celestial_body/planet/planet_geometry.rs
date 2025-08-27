@@ -1,4 +1,5 @@
 use glam::{Vec3, Quat};
+use crate::celestial_body::geometry_loader::CelestialBodyGeometry;
 use crate::geometry::{icosphere::IcoSphere};
 use crate::geometry::kdtree3d::KDTree3D;
 use crate::geometry::fbm::fbm_perlin_noise;
@@ -8,7 +9,7 @@ use std::cell::RefCell;
 use wgpu::util::DeviceExt;
 
 use crate::celestial_body::planet::planet_vertex::Vertex;
-use crate::celestial_body::planet::planet_instance::InstanceRaw;
+use crate::celestial_body::planet::planet_instance::PlanetInstance;
 use crate::celestial_body::worker::worker_new;
 
 use js_sys::{Array, Float32Array, Uint8Array};
@@ -616,101 +617,101 @@ impl PlanetGeometry {
     //     println!("GPU compute completed for {} vertices", vertex_count);
     // }
 
-    pub fn generate_worker(
-        planet_rc: &Rc<RefCell<PlanetGeometry>>,
-        pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
-        lod: usize
-    ) {
-        console_error_panic_hook::set_once();
+    // pub fn generate_worker(
+    //     planet_rc: &Rc<RefCell<CelestialBody>>,
+    //     pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
+    //     lod: usize
+    // ) {
+    //     console_error_panic_hook::set_once();
 
-        let lod_pos = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_POS[lod]);
-        let lod_col = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_COL[lod]);
-        let lod_nor = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_NOR[lod]);
-        let lod_ind = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_IND[lod]);
+    //     let lod_pos = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_POS[lod]);
+    //     let lod_col = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_COL[lod]);
+    //     let lod_nor = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_NOR[lod]);
+    //     let lod_ind = SharedArrayBuffer::new(LOD_SHARED_ARRAY_BUFFER_IND[lod]);
 
-        let config: SharedArrayBuffer = SharedArrayBuffer::new(1);
-        let config_data: Uint8Array = Uint8Array::new(&config);
-        config_data.set_index(0, lod as u8);
-        config_data.set_index(1, 0 as u8);
+    //     let config: SharedArrayBuffer = SharedArrayBuffer::new(1);
+    //     let config_data: Uint8Array = Uint8Array::new(&config);
+    //     config_data.set_index(0, lod as u8);
+    //     config_data.set_index(1, 0 as u8);
 
-        // Create worker
-        let worker = worker_new("worker-geometry");
+    //     // Create worker
+    //     let worker = worker_new("worker-geometry");
 
-        // Create common object buffer
-        let obj = Object::new();
-        Reflect::set(&obj, &JsValue::from_str("lod_pos"), &lod_pos).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod_col"), &lod_col).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod_nor"), &lod_nor).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("lod_ind"), &lod_ind).unwrap();
-        Reflect::set(&obj, &JsValue::from_str("config"), &config).unwrap();
+    //     // Create common object buffer
+    //     let obj = Object::new();
+    //     Reflect::set(&obj, &JsValue::from_str("lod_pos"), &lod_pos).unwrap();
+    //     Reflect::set(&obj, &JsValue::from_str("lod_col"), &lod_col).unwrap();
+    //     Reflect::set(&obj, &JsValue::from_str("lod_nor"), &lod_nor).unwrap();
+    //     Reflect::set(&obj, &JsValue::from_str("lod_ind"), &lod_ind).unwrap();
+    //     Reflect::set(&obj, &JsValue::from_str("config"), &config).unwrap();
 
-        let worker_is_ready = Rc::new(RefCell::new(false));
-        let worker_is_ready_clone = worker_is_ready.clone();
-        let planet_clone = planet_rc.clone();
-        let pending_clone = pending.clone();
-        let worker_clone = worker.clone();
+    //     let worker_is_ready = Rc::new(RefCell::new(false));
+    //     let worker_is_ready_clone = worker_is_ready.clone();
+    //     let planet_clone = planet_rc.clone();
+    //     let pending_clone = pending.clone();
+    //     let worker_clone = worker.clone();
 
-        let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
+    //     let onmessage = Closure::wrap(Box::new(move |msg: MessageEvent| {
 
-            let data = msg.data();
-            if !*worker_is_ready_clone.borrow() {
-                if Array::is_array(&data) && Array::from(&data).length() == 0 {
-                    worker_clone.post_message(&obj).expect("send SharedArrayBuffer");
-                    *worker_is_ready_clone.borrow_mut() = true;
-                    return;
-                }
-            }
+    //         let data = msg.data();
+    //         if !*worker_is_ready_clone.borrow() {
+    //             if Array::is_array(&data) && Array::from(&data).length() == 0 {
+    //                 worker_clone.post_message(&obj).expect("send SharedArrayBuffer");
+    //                 *worker_is_ready_clone.borrow_mut() = true;
+    //                 return;
+    //             }
+    //         }
 
-            if data.is_object() && !Array::is_array(&data) {
-                if Reflect::has(&data, &JsValue::from_str("lod_pos")).unwrap_or(false) {
+    //         if data.is_object() && !Array::is_array(&data) {
+    //             if Reflect::has(&data, &JsValue::from_str("lod_pos")).unwrap_or(false) {
 
-                    let lod_pos = Reflect::get(&data, &JsValue::from_str("lod_pos")).unwrap();
-                    let lod_pos = Float32Array::new(&lod_pos);
+    //                 let lod_pos = Reflect::get(&data, &JsValue::from_str("lod_pos")).unwrap();
+    //                 let lod_pos = Float32Array::new(&lod_pos);
 
-                    let lod_col = Reflect::get(&data, &JsValue::from_str("lod_col")).unwrap();
-                    let lod_col = Float32Array::new(&lod_col);
+    //                 let lod_col = Reflect::get(&data, &JsValue::from_str("lod_col")).unwrap();
+    //                 let lod_col = Float32Array::new(&lod_col);
 
-                    let lod_nor = Reflect::get(&data, &JsValue::from_str("lod_nor")).unwrap();
-                    let lod_nor = Float32Array::new(&lod_nor);
+    //                 let lod_nor = Reflect::get(&data, &JsValue::from_str("lod_nor")).unwrap();
+    //                 let lod_nor = Float32Array::new(&lod_nor);
 
-                    let lod_ind = Reflect::get(&data, &JsValue::from_str("lod_ind")).unwrap();
-                    let lod_ind = Uint32Array::new(&lod_ind);
+    //                 let lod_ind = Reflect::get(&data, &JsValue::from_str("lod_ind")).unwrap();
+    //                 let lod_ind = Uint32Array::new(&lod_ind);
 
 
-                    let mut planet_x = planet_clone.borrow_mut();
+    //                 let mut planet_x = planet_clone.borrow_mut();
 
-                    planet_x.lod_levels.resize(lod + 1, PlanetVertex::new());
+    //                 planet_x.lod_levels.resize(lod + 1, PlanetVertex::new());
                     
-                    let mut vec1 = vec![0.0; lod_pos.length() as usize];
-                    lod_pos.copy_to(&mut vec1[..]);
-                    planet_x.lod_levels[lod].position = vec1;
+    //                 let mut vec1 = vec![0.0; lod_pos.length() as usize];
+    //                 lod_pos.copy_to(&mut vec1[..]);
+    //                 planet_x.lod_levels[lod].position = vec1;
                     
-                    let mut vec2 = vec![0.0; lod_col.length() as usize];
-                    lod_col.copy_to(&mut vec2[..]);
-                    planet_x.lod_levels[lod].color = vec2;
+    //                 let mut vec2 = vec![0.0; lod_col.length() as usize];
+    //                 lod_col.copy_to(&mut vec2[..]);
+    //                 planet_x.lod_levels[lod].color = vec2;
                     
-                    let mut vec3 = vec![0.0; lod_nor.length() as usize];
-                    lod_nor.copy_to(&mut vec3[..]);
-                    planet_x.lod_levels[lod].normal = vec3;
+    //                 let mut vec3 = vec![0.0; lod_nor.length() as usize];
+    //                 lod_nor.copy_to(&mut vec3[..]);
+    //                 planet_x.lod_levels[lod].normal = vec3;
                     
-                    let mut vec4 = vec![0; lod_ind.length() as usize];
-                    lod_ind.copy_to(&mut vec4[..]);
-                    planet_x.lod_levels[lod].indice = vec4;
+    //                 let mut vec4 = vec![0; lod_ind.length() as usize];
+    //                 lod_ind.copy_to(&mut vec4[..]);
+    //                 planet_x.lod_levels[lod].indice = vec4;
                     
-                    // planet_clone.borrow_mut().lod_ready = true;
-                    let pv = &planet_x.lod_levels[lod];
+    //                 // planet_clone.borrow_mut().lod_ready = true;
+    //                 let pv = &planet_x.lod_levels[lod];
                     
-                    let vertices = Vertex::planet_vertex_to_vertex(pv);
-                    let indices = planet_x.get_indices(lod).to_vec();
+    //                 let vertices = Vertex::planet_vertex_to_vertex(pv);
+    //                 let indices = planet_x.get_indices(lod).to_vec();
                     
-                    *pending_clone.borrow_mut() = Some((vertices, indices));
-                    worker_clone.terminate();
-                }
-            }
-        }) as Box<dyn FnMut(MessageEvent)>);
-        worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-        onmessage.forget();
-    }
+    //                 *pending_clone.borrow_mut() = Some((vertices, indices));
+    //                 worker_clone.terminate();
+    //             }
+    //         }
+    //     }) as Box<dyn FnMut(MessageEvent)>);
+    //     worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+    //     onmessage.forget();
+    // }
 
 
 
@@ -1067,101 +1068,78 @@ impl PlanetGeometry {
         //     }
         // );
 
+// pub struct PlanetHandle {
+//     pub planet: Rc<RefCell<PlanetGeometry>>,
+//     is_ready: Rc<RefCell<bool>>,
+//     pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
+//     pub vertex_buffer: Option<wgpu::Buffer>,
+//     pub index_buffer: Option<wgpu::Buffer>,
+//     pub instance_buffer: Option<wgpu::Buffer>,
+//     pub num_indices: u32,
+//     pub instance: PlanetInstance,
+//     pub is_visible: bool,
+//     pub id: u32
 
-pub struct PlanetInstance {
-    pub position: glam::Vec3,
-    pub rotation: glam::Quat,
-}
+// }
 
-impl PlanetInstance {
-    pub fn new(position: glam::Vec3, rotation: glam::Quat) -> Self {
-        PlanetInstance {
-            position,
-            rotation
-        }
-    }
-}
+// impl PlanetHandle {
+//     pub fn new(planet: PlanetGeometry, position: Vec3, rotation: Quat, id: u32) -> Self {
+//         Self {
+//             planet: Rc::new(RefCell::new(planet)),
+//             is_ready: Rc::new(RefCell::new(false)),
+//             pending: Rc::new(RefCell::new(None)),
+//             vertex_buffer: None,
+//             index_buffer: None,
+//             instance_buffer: None,
+//             num_indices: 0,
+//             instance: PlanetInstance {position, rotation},
+//             is_visible: false,
+//             id
+//         }
+//     }
 
-impl PlanetInstance {
-    fn to_raw(&self) -> InstanceRaw {
-        InstanceRaw {
-            model: (glam::Mat4::from_translation(self.position) * glam::Mat4::from_quat(self.rotation)).to_cols_array_2d(),
-        }
-    }
-}
-
-pub struct PlanetHandle {
-    pub planet: Rc<RefCell<PlanetGeometry>>,
-    is_ready: Rc<RefCell<bool>>,
-    pending: Rc<RefCell<Option<(Vec<Vertex>, Vec<u32>)>>>,
-    pub vertex_buffer: Option<wgpu::Buffer>,
-    pub index_buffer: Option<wgpu::Buffer>,
-    pub instance_buffer: Option<wgpu::Buffer>,
-    pub num_indices: u32,
-    pub instance: PlanetInstance,
-    pub is_visible: bool,
-    pub id: u32
-
-}
-
-impl PlanetHandle {
-    pub fn new(planet: PlanetGeometry, position: Vec3, rotation: Quat, id: u32) -> Self {
-        Self {
-            planet: Rc::new(RefCell::new(planet)),
-            is_ready: Rc::new(RefCell::new(false)),
-            pending: Rc::new(RefCell::new(None)),
-            vertex_buffer: None,
-            index_buffer: None,
-            instance_buffer: None,
-            num_indices: 0,
-            instance: PlanetInstance {position, rotation},
-            is_visible: false,
-            id
-        }
-    }
-
-    pub fn generate_async(&self, lod: usize) {
-        let planet = self.planet.clone();
-        let pending_flag = self.pending.clone();
+//     pub fn generate_async(&self, lod: usize) {
+//         let planet = self.planet.clone();
+//         let pending_flag = self.pending.clone();
 
 
-        PlanetGeometry::generate_worker(&planet, pending_flag, lod);
-    }
+//         PlanetGeometry::generate_worker(&planet, pending_flag, lod);
+//     }
 
-    pub fn upload_if_ready(&mut self, device: &wgpu::Device) -> bool {
+//     pub fn upload_if_ready(&mut self, device: &wgpu::Device) -> bool {
 
-        if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
+//         if let Some((vertices, indices)) = self.pending.borrow_mut().take() {
             
-            self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&vertices),
-                usage: wgpu::BufferUsages::VERTEX,
-            }));
+//             self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+//                 label: Some("Vertex Buffer"),
+//                 contents: bytemuck::cast_slice(&vertices),
+//                 usage: wgpu::BufferUsages::VERTEX,
+//             }));
 
-            self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(&indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }));
+//             self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+//                 label: Some("Index Buffer"),
+//                 contents: bytemuck::cast_slice(&indices),
+//                 usage: wgpu::BufferUsages::INDEX,
+//             }));
 
-            let instance_data = vec![PlanetInstance::to_raw(&self.instance)];
-            self.instance_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Instance Buffer"),
-                    contents: bytemuck::cast_slice(&instance_data),
-                    usage: wgpu::BufferUsages::VERTEX,
-            }));
+//             let instance_data = vec![PlanetInstance::to_raw(&self.instance)];
+//             self.instance_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+//                     label: Some("Instance Buffer"),
+//                     contents: bytemuck::cast_slice(&instance_data),
+//                     usage: wgpu::BufferUsages::VERTEX,
+//             }));
 
-            self.num_indices = indices.len() as u32;
-            log::info!("Planet is uploaded");
+//             self.num_indices = indices.len() as u32;
+//             log::info!("Planet is uploaded");
 
-            *self.is_ready.borrow_mut() = true;
-            return true;
-        }
-        return false;
-    }
+//             *self.is_ready.borrow_mut() = true;
+//             return true;
+//         }
+//         return false;
+//     }
 
-    pub fn is_ready(&self) -> bool {
-        *self.is_ready.borrow()
-    }
+//     pub fn is_ready(&self) -> bool {
+//         *self.is_ready.borrow()
+//     }
 
-}
+// }

@@ -26,6 +26,7 @@ fn main() {
 
                 if body_type == 0 {
                     // Planète : avec normal
+                    web_sys::console::log_1(&"PLANET".into());
                     let mut planet = PlanetGeometry::new();
                     planet.generate(lod);
                     let planet_vertex = &planet.lod_levels[lod as usize];
@@ -55,8 +56,11 @@ fn main() {
                 } else if body_type == 1 {
                     // Étoile : pas de normal
                     let mut star = StarGeometry::new();
+                    
+                    web_sys::console::log_1(&"STAR".into());
                     star.generate(lod);
                     let star_vertex = &star.lod_content[lod as usize];
+
 
                     // Position
                     let lod9_position = Reflect::get(&data, &JsValue::from_str("lod_pos")).unwrap_or(JsValue::NULL);
