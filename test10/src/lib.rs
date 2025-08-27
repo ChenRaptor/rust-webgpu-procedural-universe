@@ -422,6 +422,7 @@ impl State {
             self.surface.configure(&self.device, &self.config);
 
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+            // self.camera.aspect = 658 / 1305;
         }
     }
 
