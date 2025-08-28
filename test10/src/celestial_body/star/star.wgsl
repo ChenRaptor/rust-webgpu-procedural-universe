@@ -10,14 +10,6 @@ struct CameraUniform {
 @group(0) @binding(0) // 1.
 var<uniform> camera: CameraUniform;
 
-
-// Matrice de rotation
-struct Model {
-    model : mat4x4<f32>,
-};
-@group(1) @binding(0)
-var<uniform> rotation : Model;
-
 struct TimeUniform {
     time: f32
 };
@@ -131,7 +123,7 @@ fn vs_main(
     );
     var out: VertexOutput;
     out.color = model.color;
-    let clip_position = camera.view_proj * model_matrix * rotation.model * vec4<f32>(model.position, 1.0);
+    let clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 1.0);
     out.clip_position = clip_position;
     // let aspect = 1600.0 / 1305.0;
     out.ndc_pos = vec2<f32>(
@@ -139,13 +131,13 @@ fn vs_main(
         (clip_position.y / clip_position.w) / camera.aspect_ratio
     );
     // Calcul du centre de l'étoile en NDC (on suppose que le centre est la position (0,0,0) dans le modèle)
-    let star_center_clip = camera.view_proj * model_matrix * rotation.model * vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    let star_center_clip = camera.view_proj * model_matrix * vec4<f32>(0.0, 0.0, 0.0, 1.0);
     out.star_center_ndc = vec2<f32>(
         star_center_clip.x / star_center_clip.w,
         (star_center_clip.y / star_center_clip.w)
     );
     out.star_center_w = star_center_clip.w;
-    out.static_pos = (model_matrix * vec4<f32>(model.position, 1.0)).xyz;
+    out.static_pos = (vec4<f32>(model.position, 1.0)).xyz;
     return out;
 }
 
@@ -153,7 +145,7 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var noise = fbm_perlin_noise(in.static_pos.x + time_uniform.time, in.static_pos.y + time_uniform.time, in.static_pos.z + time_uniform.time, 4, 0.7, 10.0);
+    var noise = fbm_perlin_noise(in.static_pos.x, in.static_pos.y, in.static_pos.z, 4, 0.7, 10.0);
     noise = (noise + 1.0) / 2.0 + 1.0;
     noise = pow(noise, 1.9); // augmente le contraste
 

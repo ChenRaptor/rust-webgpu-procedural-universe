@@ -11,6 +11,14 @@ impl PlanetInstance {
         }
     }
 
+    pub fn set_rotation(&mut self, rotation: glam::Quat) {
+        self.rotation = rotation;
+    }
+
+    pub fn set_position(&mut self, position: glam::Vec3) {
+        self.position = position;
+    }
+
     pub fn to_raw(&self) -> InstanceRaw {
         InstanceRaw {
             model: (glam::Mat4::from_translation(self.position) * glam::Mat4::from_quat(self.rotation)).to_cols_array_2d(),

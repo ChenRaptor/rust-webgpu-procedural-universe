@@ -11,12 +11,12 @@ impl StarInstance {
         }
     }
 
-    fn set_rotation(&mut self, rotation: glam::Quat) {
+    pub fn set_rotation(&mut self, rotation: glam::Quat) {
         self.rotation = rotation;
     }
 
-    fn set_position(&mut self, rotation: glam::Quat) {
-        self.rotation = rotation;
+    pub fn set_position(&mut self, position: glam::Vec3) {
+        self.position = position;
     }
 
     pub fn to_raw(&self) -> InstanceRaw {

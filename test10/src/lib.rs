@@ -6,7 +6,6 @@ use std::time::{Instant};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::js_sys;
 
-use wgpu::{util::DeviceExt, RenderPipeline};
 use winit::{
     application::ApplicationHandler, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::Window
 };
@@ -48,144 +47,23 @@ mod camera;
 mod stellar_system;
 pub mod celestial_body;
 pub mod time;
+pub mod manager;
 
 use celestial_body::planet::planet_geometry::{PlanetGeometry, PlanetVertex};
 use celestial_body::planet::render_pipeline::planet_render_pipeline;
 use celestial_body::star::render_pipeline::star_render_pipeline;
 use celestial_body::geometry_loader::{CelestialBodyHandle, CelestialBodyGeometry};
-use camera::{Camera, CameraUniform, CameraController, Plane};
+use camera::{Camera, CameraUniform, CameraController};
 use stellar_system::{CelestialBody, StellarSystem};
 use camera::init::init_camera_scene;
 use time::time::init_time_scene;
+use manager::manager::Manager;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 use crate::{celestial_body::star::star_geometry::StarGeometry, time::time::TimeUniformGroup};
 
-// use crate::celestial_body::star::star_geometry::{CelestialBodyGeometry};
-
-struct Manager {
-    pub planet_instances: Vec<CelestialBodyHandle>,
-    pub buffer_loader: Vec<u32>,
-    planes: [Plane; 6],
-    pub in_computing: bool,
-    pub id_in_computing: u32
-}
-
-impl Manager {
-
-    pub fn new(planets: Vec<CelestialBodyHandle>) -> Self {
-        log::info!("type={}",planets[0].get_type());
-        Manager {
-            planet_instances: planets,
-            buffer_loader: Vec::new(),
-            planes: [Plane::default(); 6],
-            in_computing: false,
-            id_in_computing: 0
-        }
-    }
-
-    fn set_planes(&mut self, planes: [Plane; 6])
-    {
-        self.planes = planes;
-    }
-
-    fn check_visibility_cluster(&mut self, device: &wgpu::Device)
-    {
-        for planet_instance in &mut self.planet_instances {
-            let mut visible = true;
-            for plane in &self.planes {
-                if plane.normal.dot(planet_instance.instance.get_position()) + plane.d < -1.5 {
-                    visible = false;
-                    break;
-                }
-            }
-            planet_instance.is_visible = visible;
-            if visible && !planet_instance.is_ready()
-            {
-                self.buffer_loader.push(planet_instance.id)
-            }
-        }
-        if !self.in_computing
-        {
-            if let Some(id) = self.buffer_loader.get(0) {
-                self.id_in_computing = *id;
-                if let Some(planet_handle) = self.planet_instances.iter_mut().find(|p| p.id == *id) {
-                    self.in_computing = true;
-                    planet_handle.generate_async(5);
-                }
-            }
-        }
-        else
-        {
-            if let Some(planet_handle) = self.planet_instances.iter_mut().find(|p| p.id == self.id_in_computing) {
-                if planet_handle.upload_if_ready(&device)
-                {
-                    self.in_computing = false;
-                }
-                self.buffer_loader.clear();
-            }
-        }
-    }
-
-    fn render_visible_object(
-        &mut self, render_pass: &mut wgpu::RenderPass,
-        pipeline_render: &Vec<RenderPipeline>,
-        camera_bind_group: &wgpu::BindGroup,
-        model_bind_group: &wgpu::BindGroup,
-        time_bgl: &wgpu::BindGroup
-    
-    )
-    {
-        for planet_instance in &mut self.planet_instances {
-            if planet_instance.is_visible && planet_instance.is_ready()
-            {
-                if let (Some(vb), Some(ib), Some(jo)) = (&planet_instance.vertex_buffer, &planet_instance.index_buffer, &planet_instance.instance_buffer) {
-                    if planet_instance.get_type() == 1
-                    {
-                        // log::info!("STAR");
-                        render_pass.set_pipeline(&pipeline_render[1]);
-                    }
-                    else
-                    {
-                        render_pass.set_pipeline(&pipeline_render[0]);
-                    }
-                    
-                    render_pass.set_bind_group(0, camera_bind_group, &[]);
-                    render_pass.set_bind_group(1, model_bind_group, &[]);
-                    if planet_instance.get_type() == 1
-                    {
-                        render_pass.set_bind_group(2, time_bgl, &[]);
-                    }
-                    render_pass.set_vertex_buffer(0, vb.slice(..));
-                    render_pass.set_vertex_buffer(1, jo.slice(..));
-                    render_pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-                    render_pass.draw_indexed(0..planet_instance.num_indices, 0, 0..1);
-                }
-            }
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct ModelUniform {
-    model: [[f32; 4]; 4],
-}
-
-impl ModelUniform {
-    fn new() -> Self {
-        Self {
-            model: glam::Mat4::IDENTITY.to_cols_array_2d(),
-        }
-    }
-
-    fn update_rotation(&mut self, angle: f32) {
-        let rotation = glam::Mat4::from_rotation_y(angle); // rotation sur Y
-        self.model = rotation.to_cols_array_2d();
-    }
-}
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -199,10 +77,6 @@ pub struct State {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    model_uniform: ModelUniform,
-    model_buffer: wgpu::Buffer,
-    model_bind_group: wgpu::BindGroup,
-    rotation_angle: f32,
     window: Arc<Window>,
     manager: Manager,
     pub time_uniform_group: TimeUniformGroup
@@ -212,16 +86,12 @@ impl State {
     async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
 
-        log::info!("size.width={}, size.height={}", size.width, size.height);
-
         // Utiliser une taille par défaut si la fenêtre n'est pas encore configurée
         let (width, height) = if size.width == 0 || size.height == 0 {
             (800, 600) // taille par défaut
         } else {
             (size.width, size.height)
         };
-
-        log::info!("Using width={}, height={}", width, height);
 
         // The instance is a handle to our GPU
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
@@ -283,8 +153,6 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
-        log::info!("config.width={}, config.height={}", config.width, config.height);
-
         let (
             camera, 
             camera_controller, 
@@ -294,45 +162,12 @@ impl State {
             camera_bind_group
         ) = init_camera_scene(&device, &config);
 
-        let mut model_uniform = ModelUniform::new();
-        model_uniform.update_rotation(0.0); // initialement pas de rotation
-
-        let model_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Model Buffer"),
-            contents: bytemuck::cast_slice(&[model_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let model_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-            label: Some("model_bind_group_layout"),
-        });
-
-        let model_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &model_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: model_buffer.as_entire_binding(),
-            }],
-            label: Some("model_bind_group"),
-        });
-
         let time_uniform_group = init_time_scene(&device);
 
         let render_pipeline_planet = planet_render_pipeline(
             &device, 
             &[
                 &camera_bind_group_layout,
-                &model_bind_group_layout,
             ], 
             &config
         );
@@ -341,7 +176,6 @@ impl State {
             &device, 
             &[
                 &camera_bind_group_layout,
-                &model_bind_group_layout,
                 &time_uniform_group.time_bgl
             ], 
             &config
@@ -387,10 +221,6 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_uniform,
-            model_uniform,
-            model_buffer,
-            model_bind_group,
-            rotation_angle: 0.0,
             window,
             manager,
             time_uniform_group,
@@ -407,11 +237,9 @@ impl State {
             self.config.width = width;
             self.config.height = height;
             self.camera_uniform.aspect_ratio = width as f32 / height as f32;
-            // log::info!("size.width2={}, size.height2={}", width, height);
             self.surface.configure(&self.device, &self.config);
 
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
-            // self.camera.aspect = 658 / 1305;
         }
     }
 
@@ -424,7 +252,7 @@ impl State {
     }
 
     fn update(&mut self) {
-  
+
         self.time_uniform_group.time_uniform.time += 0.001;
 
         self.queue.write_buffer(
@@ -433,20 +261,17 @@ impl State {
             bytemuck::cast_slice(&[self.time_uniform_group.time_uniform]),
         );
 
+        for planet_instance in &mut self.manager.planet_instances {
+            planet_instance.instance.update_rotation(0.01, 0.0);
+            planet_instance.recompute_instance(&self.device);
+        }
+
         self.camera_uniform.get_view_proj();
         let mat4 = CameraUniform::mat4_from_array(self.camera_uniform.get_view_proj());
         let planes = Camera::extract_frustum_planes(&mat4);
-        // let mut manager = Manager::new(planes);
         self.manager.set_planes(planes);
         self.manager.check_visibility_cluster(&self.device);
-        
-        self.rotation_angle += 0.01; // vitesse de rotation
-        self.model_uniform.update_rotation(self.rotation_angle);
-        self.queue.write_buffer(
-            &self.model_buffer,
-            0,
-            bytemuck::cast_slice(&[self.model_uniform]),
-        );
+
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
         self.queue.write_buffer(
@@ -498,8 +323,7 @@ impl State {
             self.manager.render_visible_object(
                 &mut render_pass, 
                 &self.render_pipeline, 
-                &self.camera_bind_group, 
-                &self.model_bind_group,
+                &self.camera_bind_group,
                 &self.time_uniform_group.time_bg
             );
         }

@@ -6,12 +6,6 @@ struct CameraUniform {
 @group(0) @binding(0) // 1.
 var<uniform> camera: CameraUniform;
 
-struct Model {
-    model : mat4x4<f32>,
-};
-@group(1) @binding(0)
-var<uniform> modelo : Model;
-
 struct InstanceInput {
     @location(5) model_matrix_0: vec4<f32>,
     @location(6) model_matrix_1: vec4<f32>,
@@ -45,7 +39,7 @@ fn vs_main(
     var out: VertexOutput;
     out.color = model.color;
     // out.clip_position = modelo.model * camera.view_proj * vec4<f32>(model.position, 1.0);
-    out.clip_position = camera.view_proj * model_matrix * modelo.model * vec4<f32>(model.position, 1.0);
+    out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 1.0);
     return out;
 }
 

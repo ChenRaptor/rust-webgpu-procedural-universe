@@ -40,6 +40,33 @@ impl CelestialInstance {
             CelestialInstance::Star(s) => s.position,
         }
     }
+
+    pub fn get_rotation(&self) -> Quat {
+        match self {
+            CelestialInstance::Planet(p) => p.rotation,
+            CelestialInstance::Star(s) => s.rotation,
+        }
+    }
+
+    pub fn update_rotation(&mut self, x: f32, y: f32) {
+        // Créer les quaternions pour les rotations X et Y
+        let quat_x = glam::Quat::from_rotation_x(x);
+        let quat_y = glam::Quat::from_rotation_y(y);
+        
+        // Combiner les rotations : rotation actuelle * nouvelle rotation
+        let current_rotation = self.get_rotation();
+        let new_rotation = current_rotation * quat_y * quat_x; // Ordre important !
+        
+        // Appliquer la nouvelle rotation
+        self.set_rotation(new_rotation);
+    }
+
+    pub fn set_rotation(&mut self, rotation: glam::Quat) {
+        match self {
+            CelestialInstance::Star(s) => s.set_rotation(rotation),
+            CelestialInstance::Planet(p) => p.set_rotation(rotation),
+        }
+    }
 }
 
 pub struct CelestialBodyHandle {
@@ -150,6 +177,27 @@ impl CelestialBodyHandle {
 
     pub fn get_type(&self) -> u8 {
         self.body.borrow().get_type()
+    }
+
+    pub fn recompute_instance(&mut self, device: &wgpu::Device) {
+        match &self.instance {
+            CelestialInstance::Planet(p) => {
+                let instance_data = vec![planet_instance::PlanetInstance::to_raw(p)];
+                self.instance_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Instance Buffer"),
+                    contents: bytemuck::cast_slice(&instance_data),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }));
+            }
+            CelestialInstance::Star(s) => {
+                let instance_data = vec![star_instance::StarInstance::to_raw(s)];
+                self.instance_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Instance Buffer"),
+                    contents: bytemuck::cast_slice(&instance_data),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }));
+            }
+        }
     }
 
 }
