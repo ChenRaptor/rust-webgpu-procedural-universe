@@ -1,26 +1,9 @@
-use glam::{Vec3, Quat};
-use crate::celestial_body::geometry_loader::CelestialBodyGeometry;
+use glam::{Vec3};
 use crate::geometry::{icosphere::IcoSphere};
 use crate::geometry::kdtree3d::KDTree3D;
 use crate::geometry::fbm::fbm_perlin_noise;
 use std::f32::consts::PI;
-use std::rc::Rc;
-use std::cell::RefCell;
-use wgpu::util::DeviceExt;
 
-use crate::celestial_body::planet::planet_vertex::Vertex;
-use crate::celestial_body::planet::planet_instance::PlanetInstance;
-use crate::celestial_body::worker::worker_new;
-
-use js_sys::{Array, Float32Array, Uint8Array};
-use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::{MessageEvent};
-use js_sys::{SharedArrayBuffer, Uint32Array, Reflect, Object};
-use wasm_bindgen::JsValue;
-use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_COL;
-use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_IND;
-use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_NOR;
-use crate::celestial_body::LOD_SHARED_ARRAY_BUFFER_POS;
 
 
 // fn worker_new(name: &str) -> Worker {

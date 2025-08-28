@@ -83,13 +83,23 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    view_proj: [[f32; 4]; 4],
+    view_proj: [[f32; 4]; 4],     // 64 bytes
+    pub aspect_ratio: f32,            // 4 bytes
+    _pad1: f32,              // 12 bytes
+    _pad2: f32,              // 12 bytes
+    _pad3: f32,              // 12 bytes
+    // _pad2: [f32; 4],              // 16 bytes (pour arriver à 96)
 }
 
 impl CameraUniform {
-    pub fn new() -> Self {
+    pub fn new(aspect_ratio: f32) -> Self {
         Self {
             view_proj: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            aspect_ratio,
+            _pad1: 0.0,
+            _pad2: 0.0,
+            _pad3: 0.0,
+            // _pad2: [0.0; 4],
         }
     }
 

@@ -11,6 +11,14 @@ impl StarInstance {
         }
     }
 
+    fn set_rotation(&mut self, rotation: glam::Quat) {
+        self.rotation = rotation;
+    }
+
+    fn set_position(&mut self, rotation: glam::Quat) {
+        self.rotation = rotation;
+    }
+
     pub fn to_raw(&self) -> InstanceRaw {
         InstanceRaw {
             model: (glam::Mat4::from_translation(self.position) * glam::Mat4::from_quat(self.rotation)).to_cols_array_2d(),

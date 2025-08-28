@@ -1,7 +1,11 @@
 // Vertex shader
 
 struct CameraUniform {
-    view_proj: mat4x4<f32>,
+    view_proj: mat4x4<f32>,   // 64 bytes
+    aspect_ratio: f32,        // 4 bytes
+    _pad1: f32,         // 12 bytes
+    _pad2: f32,         // 12 bytes
+    _pad3: f32,         // 12 bytes
 };
 @group(0) @binding(0) // 1.
 var<uniform> camera: CameraUniform;
@@ -13,6 +17,12 @@ struct Model {
 };
 @group(1) @binding(0)
 var<uniform> rotation : Model;
+
+struct TimeUniform {
+    time: f32
+};
+@group(2) @binding(0)
+var<uniform> time_uniform : TimeUniform;
 
 struct InstanceInput {
     @location(5) model_matrix_0: vec4<f32>,
@@ -123,16 +133,16 @@ fn vs_main(
     out.color = model.color;
     let clip_position = camera.view_proj * model_matrix * rotation.model * vec4<f32>(model.position, 1.0);
     out.clip_position = clip_position;
-    let aspect = 1020.0 / 1305.0;
+    // let aspect = 1600.0 / 1305.0;
     out.ndc_pos = vec2<f32>(
         clip_position.x / clip_position.w,
-        (clip_position.y / clip_position.w) / aspect
+        (clip_position.y / clip_position.w) / camera.aspect_ratio
     );
     // Calcul du centre de l'étoile en NDC (on suppose que le centre est la position (0,0,0) dans le modèle)
     let star_center_clip = camera.view_proj * model_matrix * rotation.model * vec4<f32>(0.0, 0.0, 0.0, 1.0);
     out.star_center_ndc = vec2<f32>(
         star_center_clip.x / star_center_clip.w,
-        (star_center_clip.y / star_center_clip.w) / aspect
+        (star_center_clip.y / star_center_clip.w)
     );
     out.star_center_w = star_center_clip.w;
     out.static_pos = (model_matrix * vec4<f32>(model.position, 1.0)).xyz;
@@ -143,13 +153,14 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var noise = fbm_perlin_noise(in.static_pos.x, in.static_pos.y, in.static_pos.z, 4, 0.7, 10.0);
-    noise = (noise + 1.0) / 2.0 + 1.1;
+    var noise = fbm_perlin_noise(in.static_pos.x + time_uniform.time, in.static_pos.y + time_uniform.time, in.static_pos.z + time_uniform.time, 4, 0.7, 10.0);
+    noise = (noise + 1.0) / 2.0 + 1.0;
     noise = pow(noise, 1.9); // augmente le contraste
 
-    let dist = length(in.ndc_pos - in.star_center_ndc) * in.star_center_w * 0.095;
+    let dist = length(in.ndc_pos - in.star_center_ndc) * in.star_center_w * 0.095 * camera.aspect_ratio * 1.5;
     let glow = pow(1.0 - smoothstep(0.2, 0.4, dist), 2.0);
     let base_color = vec3<f32>(1.0, 0.8, 0.2);
-    let color = base_color * (1.0 + 2.5 * glow) * noise;
+    let noise_weight = mix(0.4, 1.0, glow); // Le bruit varie de 0.8 à 1.0 selon le glow
+    let color = base_color * (1.0 + 4 * glow) * noise / noise_weight;
     return vec4<f32>(color, 1.0);
 }
