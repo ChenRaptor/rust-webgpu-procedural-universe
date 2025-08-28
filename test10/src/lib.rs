@@ -79,7 +79,10 @@ pub struct State {
     camera_bind_group: wgpu::BindGroup,
     window: Arc<Window>,
     manager: Manager,
-    pub time_uniform_group: TimeUniformGroup
+    pub time_uniform_group: TimeUniformGroup,
+    // Pour la gestion de la souris FPS
+    last_mouse_pos: Option<winit::dpi::PhysicalPosition<f64>>,
+    mouse_pressed: bool,
 }
 
 impl State {
@@ -224,6 +227,8 @@ impl State {
             window,
             manager,
             time_uniform_group,
+            last_mouse_pos: None,
+            mouse_pressed: false,
         })
     }
 
@@ -251,6 +256,26 @@ impl State {
         }
     }
 
+    fn handle_mouse_input(&mut self, button: MouseButton, pressed: bool) {
+        if button == MouseButton::Left {
+            self.mouse_pressed = pressed;
+        }
+    }
+
+    fn handle_mouse_motion(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
+        if let Some(last_pos) = self.last_mouse_pos {
+            let delta_x = position.x - last_pos.x;
+            let delta_y = position.y - last_pos.y;
+            
+            // En mode FPS, toujours appliquer le mouvement de souris
+            // En mode orbital, seulement si le bouton gauche est pressé
+            if self.camera_controller.get_mode() == camera::controller::CameraMode::Fps || self.mouse_pressed {
+                self.camera_controller.handle_mouse_movement(delta_x, delta_y);
+            }
+        }
+        self.last_mouse_pos = Some(position);
+    }
+
     fn update(&mut self) {
 
         self.time_uniform_group.time_uniform.time += 0.001;
@@ -260,6 +285,8 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.time_uniform_group.time_uniform]),
         );
+
+        // Optimisation mise en cache des Matrices et utilisation de timestamp pour reprendre sur element non visible non compute par frame
 
         for planet_instance in &mut self.manager.planet_instances {
             planet_instance.instance.update_rotation(0.01, 0.0);
@@ -486,10 +513,11 @@ impl ApplicationHandler<State> for App {
                 match event {
                     WindowEvent::CloseRequested => event_loop.exit(),
                     WindowEvent::Resized(size) => state.resize(size.width, size.height),
-                    WindowEvent::MouseInput { state, button, .. } => match (button, state.is_pressed()) {
-                        (MouseButton::Left, true) => {}
-                        (MouseButton::Left, false) => {}
-                        _ => {}
+                    WindowEvent::MouseInput { state: button_state, button, .. } => {
+                        state.handle_mouse_input(button, button_state.is_pressed());
+                    },
+                    WindowEvent::CursorMoved { position, .. } => {
+                        state.handle_mouse_motion(position);
                     },
                     WindowEvent::KeyboardInput {
                         event:
