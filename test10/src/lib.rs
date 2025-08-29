@@ -221,7 +221,7 @@ impl State {
                     log::info!("STAR");
                 CelestialBodyHandle::new(
                     CelestialBodyGeometry::Star(StarGeometry::new(star.physical_props.radius as f32)),
-                    star.position,
+                    glam::Vec3::new(star.position.x as f32, star.position.y as f32, star.position.z as f32),
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32
                 )},
@@ -308,6 +308,7 @@ impl State {
                             let radius = star.radius as f32;
                             if ray_sphere_intersect(ray_origin, ray_dir, center, radius) {
                                 log::info!("Clicked on star!");
+                                log::info!("Rayon: {}", radius)
                             }
                         }
 

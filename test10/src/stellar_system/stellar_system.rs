@@ -86,7 +86,6 @@ impl RNG {
     pub fn f64(&mut self, min: f64, max: f64) -> f64 {
         min + (max - min) * self.gen_norm()
     }
-
 }
 
 pub enum CelestialBody {
@@ -97,8 +96,8 @@ pub enum CelestialBody {
 pub struct Star {
     pub name: String,
     pub physical_props: StarPhysicalProperties,
-    pub position: glam::Vec3,
-    pub velocity: glam::Vec3,
+    pub position: glam::DVec3,
+    pub velocity: glam::DVec3,
 }
 
 pub struct Planet {
@@ -148,6 +147,7 @@ pub struct StarComposition {
 pub fn star_radius_from_mass_composition(mass: f64, composition: &StarComposition) -> f64 {
     // Conversion Yt -> masses solaires
     let mass_solar = mass / 2000.0;
+    // log::info!("mass={}", mass / 2000.0);
     // Influence de la métallicité : plus de métaux = rayon légèrement plus petit
     // (effet empirique, typiquement -5% à -10% pour Z=0.03 vs Z=0.001)
     let metallicity_factor = 1.0 - 0.5 * composition.metals as f64; // 0.5 = force de l'effet
@@ -261,60 +261,56 @@ impl StellarSystem {
 
 
 
-        let num_stars: u32 = Self::get_number_star(&mut rng, 0.5, 3);
-        let mut bodies = Vec::new();
-        let mut barycenter = Vec3::ZERO;
-        let mut total_mass = 0.0;
+        // let num_stars   : u32 = Self::get_number_star(&mut rng, 0.5, 3);
+        let num_stars   : u32 = 2;
+        let num_planets : u32 = Self::get_number_star(&mut rng, 0.4, 8);
+        let num_bodies  : u32 = num_stars + num_planets;
+        let mut bodies  : Vec<CelestialBody> = Vec::new();
 
-        for i in 0..num_stars {
-            // let mass = rng.gen_float(1.0e30, 2.0e30);
-            let star_props = generate_star(&mut rng);
-            let distance = if i == 0 { 0.0 } else { rng.f64(1.0e10, 1.5e11) as f32 };
-            let position = Vec3::new(distance / 1.0e10, 0.0, 0.0);
-
-
-            barycenter = (barycenter * total_mass as f32 + position * star_props.mass as f32) / (total_mass + star_props.mass) as f32;
-            total_mass += star_props.mass;
-
-            let mut star = Star {
-                name: format!("Star {}", i + 1),
-                physical_props: star_props,
-                position,
-                velocity: Vec3::ZERO,
+        if num_bodies == 1
+        {
+            let star = Star {
+                name: format!("Star"),
+                physical_props: generate_star(&mut rng),
+                position: glam::DVec3::ZERO,
+                velocity: glam::DVec3::ZERO,
             };
-
-            let r_vec = star.position - barycenter;
-            let r = r_vec.length() as f64;
-            if r > 0.0 {
-                let v_mag = (G * total_mass / r).sqrt() as f32;
-                let dir = Vec3::new(-r_vec.y, r_vec.x, 0.0).normalize();
-                star.velocity = dir * v_mag;
-            }
-
             bodies.push(CelestialBody::Star(star));
         }
+        else {
+            for i in 0..num_stars {
+                let position = glam::DVec3::new(
+                    rng.f64(-5.0, 5.0),
+                    rng.f64(-5.0, 5.0),
+                    0.0);
+                let mass: f64 = rng.f64(0.0, 1000.0);
+                let radius: f64 = 1.0;
 
-        let num_planets: u32 = Self::get_number_star(&mut rng, 0.4, 8);
-
-        for i in 0..num_planets {
-
-            let planet_props = generate_planet(&mut rng);
-            let distance = rng.f64(5.0e10, 5.0e11) as f32;
-            let angle = rng.f64(0.0, std::f32::consts::TAU as f64) as f32;
-            let pos = barycenter + Vec3::new((distance / 1.0e10) * angle.cos(), (distance / 1.0e10) * angle.sin(), 0.0);
-
-            let r_vec = pos - barycenter;
-            let v_mag = (G * total_mass / r_vec.length() as f64).sqrt() as f32;
-            let dir = Vec3::new(-r_vec.y, r_vec.x, 0.0).normalize();
-
-            let planet = Planet {
-                name: format!("Planet {}", i + 1),
-                physical_props: planet_props,
-                position: pos,
-                velocity: dir * v_mag,
-            };
-
-            bodies.push(CelestialBody::Planet(planet));
+                let temperature = 6700;
+                let spectral_type = match temperature as u32 {
+                    t if t >= 30000 => "O",
+                    t if t >= 10000 => "B",
+                    t if t >= 7500  => "A",
+                    t if t >= 6000  => "F",
+                    t if t >= 5200  => "G",
+                    t if t >= 3700  => "K",
+                    _              => "M",
+                }.to_string();
+                let star = Star {
+                    name: format!("Star"),
+                    physical_props: StarPhysicalProperties {
+                        mass,
+                        luminosity: 1.0,
+                        radius,
+                        temperature: 1.0,
+                        lifetime: 1.0,
+                        spectral_type
+                    },
+                    position,
+                    velocity: glam::DVec3::ZERO,
+                };
+                bodies.push(CelestialBody::Star(star));
+            }
         }
 
         StellarSystem {
@@ -324,6 +320,11 @@ impl StellarSystem {
         }
     }
 
+    // fn compute_barycenter()
+    // {
+
+    // }
+
     fn get_number_star(rng: &mut RNG, p: f64, max_stars: u32) -> u32 {
         let mut n: u32 = 1;
         while n < max_stars && rng.gen_norm() < p {
@@ -332,6 +333,85 @@ impl StellarSystem {
         n
     }
 }
+
+
+// impl StellarSystem {
+//     pub fn new(pos: Vec3) -> StellarSystem {
+//         let mut rng = RNG::new(pos);
+
+
+
+//         let num_stars: u32 = Self::get_number_star(&mut rng, 0.5, 3);
+//         let mut bodies = Vec::new();
+//         let mut barycenter = Vec3::ZERO;
+//         let mut total_mass = 0.0;
+
+//         for i in 0..num_stars {
+//             // let mass = rng.gen_float(1.0e30, 2.0e30);
+//             let star_props = generate_star(&mut rng);
+//             let distance = if i == 0 { 0.0 } else { rng.f64(1.0e10, 1.5e11) as f32 };
+//             let position = Vec3::new(distance / 1.0e10, 0.0, 0.0);
+
+
+//             barycenter = (barycenter * total_mass as f32 + position * star_props.mass as f32) / (total_mass + star_props.mass) as f32;
+//             total_mass += star_props.mass;
+
+//             let mut star = Star {
+//                 name: format!("Star {}", i + 1),
+//                 physical_props: star_props,
+//                 position,
+//                 velocity: Vec3::ZERO,
+//             };
+
+//             let r_vec = star.position - barycenter;
+//             let r = r_vec.length() as f64;
+//             if r > 0.0 {
+//                 let v_mag = (G * total_mass / r).sqrt() as f32;
+//                 let dir = Vec3::new(-r_vec.y, r_vec.x, 0.0).normalize();
+//                 star.velocity = dir * v_mag;
+//             }
+
+//             bodies.push(CelestialBody::Star(star));
+//         }
+
+//         let num_planets: u32 = Self::get_number_star(&mut rng, 0.4, 8);
+
+//         for i in 0..num_planets {
+
+//             let planet_props = generate_planet(&mut rng);
+//             let distance = rng.f64(5.0e10, 5.0e11) as f32;
+//             let angle = rng.f64(0.0, std::f32::consts::TAU as f64) as f32;
+//             let pos = barycenter + Vec3::new((distance / 1.0e10) * angle.cos(), (distance / 1.0e10) * angle.sin(), 0.0);
+
+//             let r_vec = pos - barycenter;
+//             let v_mag = (G * total_mass / r_vec.length() as f64).sqrt() as f32;
+//             let dir = Vec3::new(-r_vec.y, r_vec.x, 0.0).normalize();
+
+//             let planet = Planet {
+//                 name: format!("Planet {}", i + 1),
+//                 physical_props: planet_props,
+//                 position: pos,
+//                 velocity: dir * v_mag,
+//             };
+
+//             bodies.push(CelestialBody::Planet(planet));
+//         }
+
+//         StellarSystem {
+//             name: String::from("dzdzd"),
+//             system_type: StellarSystemType::Binary,
+//             bodies,
+//         }
+//     }
+
+//     fn get_number_star(rng: &mut RNG, p: f64, max_stars: u32) -> u32 {
+//         let mut n: u32 = 1;
+//         while n < max_stars && rng.gen_norm() < p {
+//             n += 1;
+//         }
+//         n
+//     }
+// }
 
 // Exemple d'utilisation :
 // let radius = star_radius_from_mass_composition(mass, &composition);
