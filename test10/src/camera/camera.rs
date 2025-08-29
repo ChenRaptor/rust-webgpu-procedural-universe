@@ -56,7 +56,7 @@ impl Camera {
         );
         // let view_proj = proj * view;
         // log::info!("{:?}", view_proj);
-        proj * view
+        OPENGL_TO_WGPU_MATRIX * (proj * view)
     }
 
     /// Extrait les 6 plans du frustum à partir de la matrice view-projection (déjà transformée avec OPENGL_TO_WGPU_MATRIX)
@@ -104,7 +104,7 @@ impl CameraUniform {
     }
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
-        let mat = OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix();
+        let mat = camera.build_view_projection_matrix();
         self.view_proj = mat.to_cols_array_2d();
     }
 

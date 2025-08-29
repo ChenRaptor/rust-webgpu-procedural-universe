@@ -63,7 +63,36 @@ use manager::manager::Manager;
 use wasm_bindgen::prelude::*;
 
 use crate::{celestial_body::star::star_geometry::StarGeometry, time::time::TimeUniformGroup};
+use glam::Vec3;
 
+pub fn screen_to_ray(
+    mouse_x: f64,
+    mouse_y: f64,
+    width: f64,
+    height: f64,
+    camera: &Camera,
+) -> (Vec3, Vec3) {
+    // Normaliser coordonnées écran [-1, 1]
+    let x = 2.0 * (mouse_x / width) - 1.0;
+    let y = 1.0 - 2.0 * (mouse_y / height);
+    let ndc = glam::Vec4::new(x as f32, y as f32, 1.0, 1.0);
+    let inv_view_proj = camera.build_view_projection_matrix().inverse();
+    let world_pos = inv_view_proj * ndc;
+    let world_pos = world_pos.truncate() / world_pos.w;
+    let ray_origin = camera.eye;
+    let ray_dir = (world_pos - camera.eye).normalize();
+    (ray_origin, ray_dir)
+}
+
+// Teste l'intersection rayon-sphère (renvoie true si intersection)
+pub fn ray_sphere_intersect(ray_origin: Vec3, ray_dir: Vec3, sphere_center: Vec3, sphere_radius: f32) -> bool {
+    let oc = ray_origin - sphere_center;
+    let a = ray_dir.dot(ray_dir);
+    let b = 2.0 * oc.dot(ray_dir);
+    let c = oc.dot(oc) - sphere_radius * sphere_radius;
+    let discriminant = b * b - 4.0 * a * c;
+    discriminant > 0.0
+}
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -257,6 +286,49 @@ impl State {
     }
 
     fn handle_mouse_input(&mut self, button: MouseButton, pressed: bool) {
+        if button == MouseButton::Left && pressed {
+            if let Some(mouse_pos) = self.last_mouse_pos {
+                let (width, height) = (self.config.width as f64, self.config.height as f64);
+                let (ray_origin, ray_dir) = screen_to_ray(
+                    mouse_pos.x, mouse_pos.y, width, height, &self.camera
+                );
+                // Parcours des objets
+                for planet_instance in &self.manager.planet_instances {
+
+                    let center = planet_instance.instance.get_position();
+                    match &*planet_instance.body.borrow() {
+
+                        CelestialBodyGeometry::Planet(planet) => {
+                            let radius = planet.radius as f32;
+                            if ray_sphere_intersect(ray_origin, ray_dir, center, radius) {
+                                log::info!("Clicked on planet!");
+                            }
+                        }
+                        CelestialBodyGeometry::Star(star) => {
+                            let radius = star.radius as f32;
+                            if ray_sphere_intersect(ray_origin, ray_dir, center, radius) {
+                                log::info!("Clicked on star!");
+                            }
+                        }
+
+                        // CelestialBody::Planet(planet) => {
+                        //     let center = planet.position;
+                        //     let radius = planet.physical_props.radius as f32;
+                        //     if ray_sphere_intersect(ray_origin, ray_dir, center, radius) {
+                        //         log::info!("Clicked on planet: {}", planet.name);
+                        //     }
+                        // }
+                        // CelestialBody::Star(star) => {
+                        //     let center = star.position;
+                        //     let radius = star.physical_props.radius as f32;
+                        //     if ray_sphere_intersect(ray_origin, ray_dir, center, radius) {
+                        //         log::info!("Clicked on star: {}", star.name);
+                        //     }
+                        // }
+                    }
+                }
+            }
+        }
         if button == MouseButton::Left {
             self.mouse_pressed = pressed;
         }

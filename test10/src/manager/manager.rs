@@ -13,7 +13,6 @@ pub struct Manager {
 impl Manager {
 
     pub fn new(planets: Vec<CelestialBodyHandle>) -> Self {
-        log::info!("type={}",planets[0].get_type());
         Manager {
             planet_instances: planets,
             buffer_loader: Vec::new(),
