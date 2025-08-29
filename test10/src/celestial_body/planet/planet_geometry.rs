@@ -193,7 +193,7 @@ impl PlanetVertex {
 
 pub struct PlanetGeometry {
     max_subdivision: u8,
-    radius: f32,
+    pub radius: f32,
     level_sea: f32,
     height_amplitude: f32,
     continent_octaves: u8,
@@ -221,10 +221,10 @@ pub struct PlanetGeometry {
 }
 
 impl PlanetGeometry {
-    pub fn new() -> Self {
+    pub fn new(radius: f32) -> Self {
         PlanetGeometry {
             max_subdivision: 5,
-            radius: 1.0,
+            radius,
             level_sea: 0.998,
             height_amplitude: 0.05,
             continent_octaves: 3,

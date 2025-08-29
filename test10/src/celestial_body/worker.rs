@@ -54,6 +54,10 @@ pub fn generate_worker(
 
     let config: SharedArrayBuffer = SharedArrayBuffer::new(2);
     let config_data: Uint8Array = Uint8Array::new(&config);
+
+    let config_f32: SharedArrayBuffer = SharedArrayBuffer::new(4);
+    let config_data_f32: Float32Array = Float32Array::new(&config_f32);
+
     config_data.set_index(0, lod as u8);
 
     let type_id = match *planet_rc.borrow() {
@@ -61,6 +65,11 @@ pub fn generate_worker(
         CelestialBodyGeometry::Star(_) => 1u8,
     };
     config_data.set_index(1, type_id);
+    let radius = match &*planet_rc.borrow() {
+        CelestialBodyGeometry::Planet(p) => p.radius,
+        CelestialBodyGeometry::Star(s) => s.radius,
+    };
+    config_data_f32.set_index(0, radius);
 
     // Create worker
     let worker = worker_new("worker-geometry");
@@ -72,6 +81,7 @@ pub fn generate_worker(
     Reflect::set(&obj, &JsValue::from_str("lod_nor"), &lod_nor).unwrap();
     Reflect::set(&obj, &JsValue::from_str("lod_ind"), &lod_ind).unwrap();
     Reflect::set(&obj, &JsValue::from_str("config"), &config).unwrap();
+    Reflect::set(&obj, &JsValue::from_str("config_f32"), &config_f32).unwrap();
 
     let worker_is_ready = Rc::new(RefCell::new(false));
     let worker_is_ready_clone = worker_is_ready.clone();

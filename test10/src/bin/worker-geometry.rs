@@ -23,11 +23,14 @@ fn main() {
                 let config_data = Uint8Array::new(&config);
                 let lod = config_data.get_index(0);
                 let body_type = config_data.get_index(1);
+                let config_f32 = Reflect::get(&data, &JsValue::from_str("config_f32")).unwrap_or(JsValue::NULL);
+                let config_data_f32 = Float32Array::new(&config_f32);
+                let radius = config_data_f32.get_index(0);
 
                 if body_type == 0 {
                     // Planète : avec normal
                     web_sys::console::log_1(&"PLANET".into());
-                    let mut planet = PlanetGeometry::new();
+                    let mut planet = PlanetGeometry::new(radius);
                     planet.generate(lod);
                     let planet_vertex = &planet.lod_levels[lod as usize];
 
@@ -55,7 +58,7 @@ fn main() {
                     return;
                 } else if body_type == 1 {
                     // Étoile : pas de normal
-                    let mut star = StarGeometry::new();
+                    let mut star = StarGeometry::new(radius);
                     
                     web_sys::console::log_1(&"STAR".into());
                     star.generate(lod);

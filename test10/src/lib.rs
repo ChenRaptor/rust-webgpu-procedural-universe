@@ -191,7 +191,7 @@ impl State {
                 CelestialBody::Star(star) => {
                     log::info!("STAR");
                 CelestialBodyHandle::new(
-                    CelestialBodyGeometry::Star(StarGeometry::new()),
+                    CelestialBodyGeometry::Star(StarGeometry::new(star.physical_props.radius as f32)),
                     star.position,
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32
@@ -199,7 +199,7 @@ impl State {
                 CelestialBody::Planet(planet) => {
                     log::info!("PLANET");
                 CelestialBodyHandle::new(
-                    CelestialBodyGeometry::Planet(PlanetGeometry::new()),
+                    CelestialBodyGeometry::Planet(PlanetGeometry::new(planet.physical_props.radius as f32)),
                     planet.position,
                     glam::Quat::from_axis_angle(glam::Vec3::Z, 0.0_f32.to_radians()),
                     i as u32

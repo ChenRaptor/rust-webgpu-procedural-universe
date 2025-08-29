@@ -32,17 +32,17 @@ impl StarVertex {
 
 pub struct StarGeometry {
     // max_subdivision: u8,
-    // radius: f32,
+    pub radius: f32,
     // sphere_vertices: Vec<f32>,
     // sphere_indices: Vec<u32>,
     pub lod_content: Vec<StarVertex>
 }
 
 impl StarGeometry {
-    pub fn new() -> Self {
+    pub fn new(radius: f32) -> Self {
         Self {
             // max_subdivision: 4,
-            // radius: 1.0,
+            radius,
             // sphere_vertices: Vec::new(),
             // sphere_indices: Vec::new(),
             lod_content: Vec::new()
@@ -156,9 +156,9 @@ impl StarGeometry {
         for (i, vertex) in vertices.iter().enumerate() {
 
             // Position
-            position[3 * i] = vertex.x;
-            position[3 * i + 1] = vertex.y;
-            position[3 * i + 2] = vertex.z;
+            position[3 * i] = vertex.x * self.radius;
+            position[3 * i + 1] = vertex.y * self.radius;
+            position[3 * i + 2] = vertex.z * self.radius;
 
             // Couleur
             color[3 * i] = 0.7;

@@ -36,7 +36,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(aspect: f32) -> Self {
         Self {
-            eye: glam::Vec3::new(0.0, 0.0, 8.0),
+            eye: glam::Vec3::new(0.0, 0.0, 30.0),
             target: glam::Vec3::new(0.0, 0.0, 0.0),
             up: glam::Vec3::Y,
             aspect,

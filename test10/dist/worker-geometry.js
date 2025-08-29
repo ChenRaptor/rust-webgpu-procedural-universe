@@ -266,6 +266,10 @@ let wasm_bindgen;
             const ret = Reflect.get(arg0, arg1);
             return ret;
         }, arguments) };
+        imports.wbg.__wbg_getindex_013d4b906bc5aa19 = function(arg0, arg1) {
+            const ret = arg0[arg1 >>> 0];
+            return ret;
+        };
         imports.wbg.__wbg_getindex_5b00c274b05714aa = function(arg0, arg1) {
             const ret = arg0[arg1 >>> 0];
             return ret;
@@ -348,7 +352,7 @@ let wasm_bindgen;
             const ret = typeof window === 'undefined' ? null : window;
             return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
         };
-        imports.wbg.__wbindgen_closure_wrapper46 = function(arg0, arg1, arg2) {
+        imports.wbg.__wbindgen_closure_wrapper47 = function(arg0, arg1, arg2) {
             const ret = makeClosure(arg0, arg1, 7, __wbg_adapter_18);
             return ret;
         };
